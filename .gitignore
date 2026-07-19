@@ -1,0 +1,12 @@
+# Godot 4 editör önbelleği / yerel dosyalar
+.godot/
+*.tmp
+
+# İşletim sistemi
+Thumbs.db
+.DS_Store
+
+# Dışa aktarım çıktıları
+export/
+*.pck
+*.exe.import

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://nazarcard"]
+
+[ext_resource type="Script" path="res://scripts/ui/card.gd" id="1"]
+
+[node name="Card" type="Control"]
+custom_minimum_size = Vector2(132, 184)
+script = ExtResource("1")

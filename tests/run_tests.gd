@@ -1,0 +1,875 @@
+extends Node
+
+## Headless test runner (GUT bağımlılığı olmadan). Sahne olarak çalışır ki
+## autoload'lar (EventBus/Rng/GameState) yüklensin.
+## Çalıştırma:
+##   godot --headless --path <proje> res://tests/test_runner.tscn
+## Çıkış kodu: 0 = tüm testler geçti, 1 = en az bir test başarısız.
+## Bkz. CLAUDE.md §0.5 (V2) ve §13.7.
+
+var _pass := 0
+var _fail := 0
+var _section := ""
+
+
+func _ready() -> void:
+	print("=== NAZAR motor testleri (V2 Sorgu & Gece) ===")
+	_test_topology()
+	_test_testimony()
+	_test_solver()
+	_test_night_engine()
+	_test_generator()
+	_test_budget()
+	_test_omen()
+	_test_outcast()
+	_test_slayer()
+	_test_ascension()
+	_test_gameflow()
+	_test_run_manager()
+	_test_save_manager()
+	_test_board_smoke()
+	print("\n=== SONUC: %d gecti, %d basarisiz ===" % [_pass, _fail])
+	get_tree().quit(1 if _fail > 0 else 0)
+
+
+func _section_start(name: String) -> void:
+	_section = name
+	print("\n[%s]" % name)
+
+
+func check(cond: bool, msg: String) -> void:
+	if cond:
+		_pass += 1
+	else:
+		_fail += 1
+		print("  FAIL (%s): %s" % [_section, msg])
+
+
+func eq(a, b, msg: String) -> void:
+	check(a == b, "%s  (beklenen %s, gelen %s)" % [msg, str(b), str(a)])
+
+
+## Test için: n kişilik köy, verilen seat'ler minion, gerisi Judge köylü.
+func _make_state(n: int, evil_seats: Array) -> VillageState:
+	var st := VillageState.new()
+	st.n = n
+	var chars: Array[Character] = []
+	for i in range(n):
+		var c := Character.new()
+		c.seat = i
+		if i in evil_seats:
+			c.alignment = Enums.Alignment.EVIL
+			c.category = Enums.Category.MINION
+			c.role = &"Minion"
+		else:
+			c.alignment = Enums.Alignment.GOOD
+			c.category = Enums.Category.VILLAGER
+			c.role = &"Judge"
+		chars.append(c)
+	st.characters = chars
+	st.evil_count = evil_seats.size()
+	st.minion_count = evil_seats.size()
+	st.demon_count = 0
+	st.anchors = []
+	st.marks = []
+	for i in range(n):
+		st.marks.append(Enums.MarkType.NONE)
+	return st
+
+
+## Tüm ifadeler verilmiş say (üretici teklik kontrolüyle aynı görünüm).
+func _give_all(state: VillageState) -> void:
+	for c in state.characters:
+		c.given = c.claims.size()
+
+
+func _give_none(state: VillageState) -> void:
+	for c in state.characters:
+		c.given = 0
+
+
+# -------------------------------------------------------------------
+func _test_topology() -> void:
+	_section_start("BoardTopology")
+	var n := 8
+	eq(BoardTopology.left(0, n), 7, "left wrap")
+	eq(BoardTopology.right(7, n), 0, "right wrap")
+	eq(BoardTopology.distance(0, 4, n), 4, "opposite distance")
+	eq(BoardTopology.distance(0, 5, n), 3, "distance short way")
+	eq(BoardTopology.distance(7, 1, n), 2, "distance wrap")
+	eq(BoardTopology.cw_distance(6, 1, n), 3, "cw wrap")
+	eq(BoardTopology.ccw_distance(1, 6, n), 3, "ccw wrap")
+
+	eq(BoardTopology.nearest_evil_direction(0, [2], n), Enums.Direction.CLOCKWISE, "evil ahead cw")
+	eq(BoardTopology.nearest_evil_direction(0, [6], n), Enums.Direction.COUNTER_CLOCKWISE, "evil behind ccw")
+	eq(BoardTopology.nearest_evil_direction(0, [4], n), Enums.Direction.EQUIDISTANT, "opposite equidistant")
+	eq(BoardTopology.nearest_evil_direction(0, [2, 6], n), Enums.Direction.EQUIDISTANT, "two sides equidistant")
+	eq(BoardTopology.nearest_evil_direction(0, [1, 6], n), Enums.Direction.CLOCKWISE, "nearer cw wins")
+
+	eq(BoardTopology.nearest_evil_distance(0, [3, 5], n), 3, "nearest dist")
+	eq(BoardTopology.arc(6, 3, n), [6, 7, 0], "arc wrap")
+
+
+# -------------------------------------------------------------------
+func _test_testimony() -> void:
+	_section_start("TestimonyClaim.evaluate")
+	# n=5, evil = {1,3}
+	var al := [Enums.Alignment.GOOD, Enums.Alignment.EVIL, Enums.Alignment.GOOD, Enums.Alignment.EVIL, Enums.Alignment.GOOD]
+	var world := {"n": 5, "alignment": al, "evil_seats": [1, 3]}
+
+	var t1 := TestimonyClaim.new()
+	t1.type = Enums.TestimonyType.ALIGNMENT_OF
+	t1.targets = [1]
+	t1.alignment = Enums.Alignment.EVIL
+	check(t1.evaluate(world), "ALIGNMENT_OF true")
+	t1.alignment = Enums.Alignment.GOOD
+	check(not t1.evaluate(world), "ALIGNMENT_OF false")
+
+	var t2 := TestimonyClaim.new()
+	t2.type = Enums.TestimonyType.COUNT_IN_SET
+	t2.targets = [0, 1]
+	t2.number = 1
+	check(t2.evaluate(world), "COUNT_IN_SET true")
+	t2.number = 2
+	check(not t2.evaluate(world), "COUNT_IN_SET false")
+
+	var t3 := TestimonyClaim.new()
+	t3.type = Enums.TestimonyType.NEIGHBOR_HAS_EVIL
+	t3.speaker = 2  # komşular 1 ve 3, ikisi de Evil
+	t3.number = 2
+	check(t3.evaluate(world), "NEIGHBOR_HAS_EVIL true (2 evil neighbors)")
+
+	var t4 := TestimonyClaim.new()
+	t4.type = Enums.TestimonyType.NEAREST_EVIL_DISTANCE
+	t4.speaker = 0  # en yakın evil #1, mesafe 1
+	t4.number = 1
+	check(t4.evaluate(world), "NEAREST_EVIL_DISTANCE true")
+
+	var t5 := TestimonyClaim.new()
+	t5.type = Enums.TestimonyType.PAIR_RELATION
+	t5.targets = [1, 3]  # ikisi de evil -> aynı
+	t5.bool_val = true
+	check(t5.evaluate(world), "PAIR_RELATION same true")
+
+
+# -------------------------------------------------------------------
+func _test_solver() -> void:
+	_section_start("DeductionSolver")
+
+	# Elle kurulmuş köy: n=4, evil_count=1. Gerçek evil = #2.
+	# #0 (Judge): "#2 Evil" (DOĞRU). #1 (Judge): "#3 temiz" (DOĞRU).
+	var chars: Array = []
+	for i in range(4):
+		var c := Character.new()
+		c.seat = i
+		c.alignment = Enums.Alignment.GOOD
+		chars.append(c)
+	chars[2].alignment = Enums.Alignment.EVIL
+
+	var vs := VillageState.new()
+	vs.n = 4
+	vs.evil_count = 1
+	vs.characters.assign(chars)
+	# Anchor #0 = kesin GOOD; simetriyi kırıp tek çözüm garantiler (§5.7).
+	vs.anchors = [0]
+	vs.marks = [0, 0, 0, 0]
+
+	var claim0 := TestimonyClaim.new()
+	claim0.type = Enums.TestimonyType.ALIGNMENT_OF
+	claim0.speaker = 0
+	claim0.targets = [2]
+	claim0.alignment = Enums.Alignment.EVIL
+	chars[0].claims = [claim0]
+	chars[0].given = 1
+
+	var claim1 := TestimonyClaim.new()
+	claim1.type = Enums.TestimonyType.ALIGNMENT_OF
+	claim1.speaker = 1
+	claim1.targets = [3]
+	claim1.alignment = Enums.Alignment.GOOD
+	chars[1].claims = [claim1]
+	chars[1].given = 1
+
+	var sols := DeductionSolver.solve(vs.visible_for_solver())
+	eq(sols.size(), 1, "hand village unique")
+	if sols.size() == 1:
+		eq(sols[0][2], Enums.Alignment.EVIL, "solver found #2 evil")
+	check(DeductionSolver.is_determined(vs.visible_for_solver()), "is_determined true")
+	eq(DeductionSolver.certain_evil(vs.visible_for_solver()), [2], "certain_evil = [2]")
+
+	# Belirsiz köy: hiç ifade verilmedi, anchor [0] -> evil in {1,2,3} = 3 dünya.
+	_give_none(vs)
+	var ambig := DeductionSolver.solve(vs.visible_for_solver())
+	eq(ambig.size(), 3, "no claims + anchor[0] -> 3 worlds")
+	check(not DeductionSolver.is_determined(vs.visible_for_solver()), "ambiguous not determined")
+
+	# Anchor'ı kaldır: evil_count=1 -> C(4,1)=4 dünya.
+	vs.anchors = []
+	eq(DeductionSolver.solve(vs.visible_for_solver()).size(), 4, "no anchor -> C(4,1)=4 worlds")
+
+	# KESİN KİMLİK (known) pini: #1 gece öldü (kesin İYİ) -> 3 dünya kalır.
+	var vis := vs.visible_for_solver()
+	vis["known"] = [{"seat": 1, "alignment": Enums.Alignment.GOOD}]
+	eq(DeductionSolver.solve(vis).size(), 3, "known-good pin dünyayı eler")
+	# #2 ayıklandı ve KURT çıktı -> tek dünya.
+	vis["known"] = [{"seat": 2, "alignment": Enums.Alignment.EVIL}]
+	eq(DeductionSolver.solve(vis).size(), 1, "known-evil pin tekliğe indirir")
+
+
+# -------------------------------------------------------------------
+func _test_night_engine() -> void:
+	_section_start("NightEngine (gece avı)")
+
+	# Av Düzeni: en yakın canlı koyun; eşitlikte küçük seat.
+	var al7: Array = []
+	for i in range(7):
+		al7.append(Enums.Alignment.GOOD)
+	al7[3] = Enums.Alignment.EVIL
+	var alive_all := [0, 1, 2, 3, 4, 5, 6]
+	eq(NightEngine.pick_victim(al7, alive_all, 7), 2, "kurban: komşu koyunlardan küçük seat (#2)")
+
+	# #2 öldüyse: kalan en yakın #4 (d=1).
+	eq(NightEngine.pick_victim(al7, [0, 1, 3, 4, 5, 6], 7), 4, "sonraki kurban #4")
+
+	# Kurt yoksa av yok.
+	var al_good: Array = []
+	for i in range(5):
+		al_good.append(Enums.Alignment.GOOD)
+	eq(NightEngine.pick_victim(al_good, [0, 1, 2, 3, 4], 5), -1, "kurt yoksa av yok")
+
+	# apply: kurban ölür, gerçek yüz açılır, olay kaydedilir.
+	var st := _make_state(7, [3])
+	var v := NightEngine.apply(st)
+	eq(v, 2, "apply kurbanı seçti (#2)")
+	check(st.get_character(2).night_killed, "kurban night_killed")
+	check(st.get_character(2).revealed, "kurbanın gerçek yüzü açık")
+	eq(st.night_events.size(), 1, "gece olayı kaydedildi")
+	eq(st.alive_good_count(), 5, "canlı koyun 6->5")
+
+	# CESETLER YALAN SÖYLEMEZ: gece olayı, yanlış kurt konumlarını eler.
+	# Gerçek dünya (evil={3}) tutarlı; evil={6} olsaydı kurban #0 olurdu -> tutarsız.
+	var al_wrong: Array = []
+	for i in range(7):
+		al_wrong.append(Enums.Alignment.GOOD)
+	al_wrong[6] = Enums.Alignment.EVIL
+	check(NightEngine.consistent_with_nights(al7, st.night_events, 7), "gerçek dünya gece ile tutarlı")
+	check(not NightEngine.consistent_with_nights(al_wrong, st.night_events, 7), "yanlış dünya gece ile TUTARSIZ (nirengi)")
+
+	# Solver'a gece kısıtı: ifadesiz köyde bile cesetler dünyaları daraltır.
+	var vis := st.visible_for_solver()
+	var worlds := DeductionSolver.solve(vis)
+	var all_consistent := true
+	for w in worlds:
+		if not NightEngine.consistent_with_nights(w, st.night_events, 7):
+			all_consistent = false
+	check(all_consistent, "solver yalnız gece-tutarlı dünyaları döndürür")
+	check(worlds.size() < 6, "gece kısıtı dünya sayısını düşürdü (%d<6)" % worlds.size())
+
+	# --- AĞIL (koruma): korunan kart av havuzundan çıkar; sonraki en yakın ölür ---
+	eq(NightEngine.pick_victim(al7, alive_all, 7, 2), 4, "korunan #2 atlanır, kurban #4")
+	var stp := _make_state(7, [3])
+	var vp := NightEngine.apply(stp, 2)
+	eq(vp, 4, "apply koruma ile #4'ü seçti")
+	eq(int(stp.night_events[0]["protected"]), 2, "koruma gece olayına kaydedildi")
+	# Koruma kaydı solver tutarlılığını korur: gerçek dünya hâlâ tutarlı.
+	check(NightEngine.consistent_with_nights(al7, stp.night_events, 7), "korumalı olay gerçek dünyayla tutarlı")
+	# GameState.end_day(protected): korunan sağ kalır.
+	var stg := _make_state(7, [3])
+	GameState.start_village(stg)
+	GameState.end_day(2)
+	check(stg.get_character(2).is_alive(), "ağıla alınan #2 geceyi sağ atlattı")
+	check(stg.get_character(4).night_killed, "kurt bir sonraki en yakını (#4) aldı")
+
+
+# -------------------------------------------------------------------
+func _test_generator() -> void:
+	_section_start("VillageGenerator (V2 çoklu ifade)")
+	var rng := RandomNumberGenerator.new()
+
+	var configs := [
+		{"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1},
+		{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 1},
+		{"n": 5, "evil_count": 1, "demon_count": 1, "anchor_count": 1},
+	]
+
+	var total := 0
+	var determined := 0
+	var null_count := 0
+	var claims_ok := true
+	for cfg in configs:
+		for s in range(1, 81):
+			rng.seed = s * 7919 + int(cfg["n"]) * 31
+			var conf: Dictionary = cfg.duplicate()
+			conf["seed"] = int(rng.seed)
+			var state := VillageGenerator.generate(conf, rng)
+			total += 1
+			if state == null:
+				null_count += 1
+				continue
+			# Üretici tüm-ifadeler-verilmiş teklik garantiler; tekrar doğrula.
+			_give_all(state)
+			if DeductionSolver.is_determined(state.visible_for_solver()):
+				determined += 1
+			_give_none(state)
+			var gt := state.ground_truth_world()
+			for c in state.characters:
+				if c.claims.size() < 1:
+					claims_ok = false
+				if c.is_evil():
+					# §0.5: kurt HER ifadesinde yalan söyler.
+					for cl in c.claims:
+						if cl.evaluate(gt):
+							claims_ok = false
+					# İlk ifade bluff rolünün tipinde olmalı (§5.3).
+					check(c.claims[0].type == _expected_claim_type(c.bluff_role),
+						"kurt ilk ifadesi bluff tipinde (rol=%s)" % c.bluff_role)
+				elif c.category == Enums.Category.VILLAGER and not (c.role in [&"Slayer", &"Hunter", &"Astrologer"]):
+					# Düz köylü: HER ifadesi doğru.
+					for cl in c.claims:
+						if cl.type != Enums.TestimonyType.SELF_ANCHOR and not cl.evaluate(gt):
+							claims_ok = false
+
+	print("  üretilen: %d, tek-çözümlü: %d, null: %d" % [total, determined, null_count])
+	eq(null_count, 0, "hiç null üretim yok")
+	eq(determined, total - null_count, "TÜM köyler tek-çözümlü (adalet garantisi)")
+	check(claims_ok, "ifade doğruluk kuralları (kurt hep yalan, koyun hep doğru)")
+
+	# Determinizm: aynı seed -> aynı köy.
+	var rng_a := RandomNumberGenerator.new()
+	rng_a.seed = 424242
+	var va := VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1, "seed": 424242}, rng_a)
+	var rng_b := RandomNumberGenerator.new()
+	rng_b.seed = 424242
+	var vb := VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1, "seed": 424242}, rng_b)
+	var same := true
+	if va == null or vb == null:
+		same = false
+	else:
+		for i in range(va.n):
+			if va.characters[i].alignment != vb.characters[i].alignment:
+				same = false
+			if va.characters[i].role != vb.characters[i].role:
+				same = false
+	check(same, "aynı seed -> aynı köy (determinizm)")
+
+
+# -------------------------------------------------------------------
+func _test_budget() -> void:
+	_section_start("Bütçe garantisi (bot: sorgu + gece içinde çözülebilir)")
+	# Üretilen her köy, botun sorgu bütçesi + gün sınırı içinde çözebildiği köydür.
+	var rng := RandomNumberGenerator.new()
+	var n_ok := 0
+	var total := 0
+	for s in range(30):
+		rng.seed = 31000 + s
+		var conf := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1,
+			"q_per_day": 3, "max_days": 5, "seed": rng.seed}
+		var st: VillageState = VillageGenerator.generate(conf, rng)
+		if st == null:
+			continue
+		total += 1
+		if VillageGenerator._budget_solvable(st):
+			n_ok += 1
+	check(total >= 28, "bütçe köyleri üretildi (%d/30)" % total)
+	eq(n_ok, total, "üretilen her köy bot-bütçesinde çözülebilir")
+
+	# Sıkı bütçe (q=2, 3 gün, çifte av) da üretilebilmeli (boss benzeri).
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = 32000
+	var tight := VillageGenerator.generate({"n": 9, "evil_count": 2, "demon_count": 1,
+		"anchor_count": 2, "q_per_day": 4, "max_days": 5, "kills_per_night": 2, "seed": 32000}, rng2)
+	check(tight != null, "çifte-av (boss) köyü üretilebildi")
+	if tight != null:
+		eq(tight.kills_per_night, 2, "kills_per_night state'e işledi")
+
+
+# -------------------------------------------------------------------
+func _test_omen() -> void:
+	_section_start("Omen (gizli kural)")
+
+	var n := 9
+	check(Omen.satisfies(Enums.OmenType.PARITY, {}, [1, 3, 5], n), "PARITY hepsi tek")
+	check(not Omen.satisfies(Enums.OmenType.PARITY, {}, [1, 2], n), "PARITY karışık -> yanlış")
+	check(Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [3, 4, 5], n), "ARC bitişik")
+	check(Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [8, 0, 1], n), "ARC wrap bitişik")
+	check(not Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [0, 2, 4], n), "ARC dağınık -> yanlış")
+	check(Omen.satisfies(Enums.OmenType.DISPERSED, {}, [0, 2, 4], n), "DISPERSED komşusuz")
+	check(not Omen.satisfies(Enums.OmenType.DISPERSED, {}, [0, 1], n), "DISPERSED komşu -> yanlış")
+	check(Omen.satisfies(Enums.OmenType.MIRROR, {}, [1, 3], 8), "MIRROR simetrik (eksen 2)")
+
+	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR]:
+		var placements := Omen.valid_placements(otype, {}, n, 2)
+		check(placements.size() > 0, "valid_placements boş değil (tip %d)" % otype)
+		var all_ok := true
+		for combo in placements:
+			if not Omen.satisfies(otype, {}, combo, n):
+				all_ok = false
+				break
+		check(all_ok, "valid_placements hepsi sağlıyor (tip %d)" % otype)
+
+	# Üretici: Omen'li köyler tek-çözümlü VE gerçekten Omen'i sağlıyor mu?
+	var rng := RandomNumberGenerator.new()
+	var checked := 0
+	var determined_ok := 0
+	var omen_ok := 0
+	var has_astro := 0
+	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR]:
+		for s in range(40):
+			rng.seed = 4200 + otype * 1000 + s
+			var conf := {"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": otype, "seed": rng.seed}
+			var state: VillageState = VillageGenerator.generate(conf, rng)
+			if state == null:
+				continue
+			checked += 1
+			var gt: Array = []
+			var astro := false
+			for c in state.characters:
+				if c.is_evil():
+					gt.append(c.seat)
+				if c.role == &"Astrologer":
+					astro = true
+			if astro:
+				has_astro += 1
+			if Omen.satisfies(otype, {}, gt, 9):
+				omen_ok += 1
+			# Müneccim ifşa edilmiş varsay -> tüm ifadelerle tek çözüm.
+			state.known_omen = otype
+			_give_all(state)
+			if DeductionSolver.is_determined(state.visible_for_solver()):
+				determined_ok += 1
+			_give_none(state)
+			state.known_omen = Enums.OmenType.NONE
+	check(checked > 0, "Omen köyleri üretildi (%d)" % checked)
+	eq(omen_ok, checked, "üretilen her Omen köyü kuralı sağlıyor")
+	eq(determined_ok, checked, "üretilen her Omen köyü (Müneccim ifşa edilince) tek-çözümlü")
+	eq(has_astro, checked, "her Omen köyünde Müneccim var")
+	print("  omen: uretilen %d, kural-ok %d, tek-cozum %d" % [checked, omen_ok, determined_ok])
+
+
+# -------------------------------------------------------------------
+func _test_outcast() -> void:
+	_section_start("Outcast (Ermiş/Saint + Sarhoş)")
+
+	var rng := RandomNumberGenerator.new()
+	var checked := 0
+	var saint_ok := 0
+	var determined_ok := 0
+	for s in range(40):
+		rng.seed = 7700 + s
+		var conf := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "outcast_count": 1, "seed": rng.seed}
+		var state: VillageState = VillageGenerator.generate(conf, rng)
+		if state == null:
+			continue
+		checked += 1
+		var saints := 0
+		var saint_good := true
+		for c in state.characters:
+			if c.role == &"Saint":
+				saints += 1
+				if c.is_evil() or c.category != Enums.Category.OUTCAST:
+					saint_good = false
+		if saints == 1 and saint_good and state.outcast_count == 1:
+			saint_ok += 1
+		_give_all(state)
+		if DeductionSolver.is_determined(state.visible_for_solver()):
+			determined_ok += 1
+		_give_none(state)
+	check(checked >= 30, "outcast köyleri üretildi (%d/40)" % checked)
+	eq(saint_ok, checked, "her köyde 1 iyi Ermiş (parya, ilan edilmiş)")
+	eq(determined_ok, checked, "outcast köyleri tek-çözümlü")
+
+	# --- Sarhoş (Drunk) solver gevşetmesi ---
+	var claim := TestimonyClaim.new()
+	claim.type = Enums.TestimonyType.ALIGNMENT_OF
+	claim.speaker = 1
+	claim.targets = [2]
+	claim.alignment = Enums.Alignment.EVIL
+	var vis := {"n": 3, "evil_count": 1, "anchors": [], "revealed": [{"seat": 1, "testimony": claim}], "drunk_count": 0}
+	eq(DeductionSolver.solve(vis).size(), 2, "drunk=0 -> 2 dünya")
+	vis["drunk_count"] = 1
+	eq(DeductionSolver.solve(vis).size(), 3, "drunk=1 -> yanlış-iyi=sarhoş, 3 dünya")
+	vis["anchors"] = [1]
+	eq(DeductionSolver.solve(vis).size(), 1, "anchor sarhoş olamaz -> 1 dünya")
+
+	# --- Sarhoş üretimi: 1 gizli sarhoş (köylü rolünde), tek-çözümlü ---
+	var d_checked := 0
+	var d_ok := 0
+	var d_det := 0
+	for s in range(40):
+		rng.seed = 8800 + s
+		var conf := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "drunk_count": 1, "seed": rng.seed}
+		var st: VillageState = VillageGenerator.generate(conf, rng)
+		if st == null:
+			continue
+		d_checked += 1
+		var drunks := 0
+		for c in st.characters:
+			if c.category == Enums.Category.OUTCAST and c.role != &"Saint":
+				drunks += 1
+		if drunks == 1 and st.drunk_count == 1:
+			d_ok += 1
+		_give_all(st)
+		if DeductionSolver.is_determined(st.visible_for_solver()):
+			d_det += 1
+		_give_none(st)
+	check(d_checked >= 25, "sarhoş köyleri üretildi (%d/40)" % d_checked)
+	eq(d_ok, d_checked, "her köyde 1 gizli sarhoş (köylü rolünde parya)")
+	eq(d_det, d_checked, "sarhoş köyleri tek-çözümlü")
+
+	# Ermiş'i ayıklamak ANINDA kaybettirir (§6).
+	var vs := _make_state(5, [3])
+	vs.get_character(1).role = &"Saint"
+	vs.get_character(1).category = Enums.Category.OUTCAST
+	GameState.start_village(vs)
+	GameState.execute(1)
+	eq(GameState.phase, Enums.GamePhase.VILLAGE_END, "Ermiş ayıklanınca köy biter")
+	check(not GameState.is_active(), "Ermiş sonrası oyun pasif")
+
+
+# -------------------------------------------------------------------
+func _test_slayer() -> void:
+	_section_start("Kılıççı (Slayer) + Avcı (Hunter)")
+
+	# Elle köy: seat 0 Kılıççı, seat 2 Alfa, gerisi köylü.
+	var vs := VillageState.new()
+	vs.n = 4
+	var chars: Array[Character] = []
+	for i in range(4):
+		var c := Character.new()
+		c.seat = i
+		c.alignment = Enums.Alignment.GOOD
+		c.category = Enums.Category.VILLAGER
+		chars.append(c)
+	chars[0].role = &"Slayer"
+	chars[2].role = &"Demon"
+	chars[2].alignment = Enums.Alignment.EVIL
+	chars[2].category = Enums.Category.DEMON
+	vs.characters = chars
+	vs.evil_count = 1
+	vs.demon_count = 1
+	vs.marks = [0, 0, 0, 0]
+	GameState.start_village(vs)
+
+	GameState.slay(0, 1)  # ıska
+	check(chars[0].ability_used, "kılıç kullanıldı (tek sefer)")
+	check(not chars[2].executed, "yanlış hedef -> Alfa yaşıyor")
+
+	chars[0].ability_used = false
+	GameState.slay(0, 2)  # isabet
+	check(chars[2].executed, "kılıç Alfa Kurt'u öldürdü")
+	eq(GameState.phase, Enums.GamePhase.VILLAGE_END, "Alfa ölünce köy biter (tek evil)")
+
+	# --- Avcı: her kurdu vurur; koyun vurursan -3 can ---
+	var vh := VillageState.new()
+	vh.n = 4
+	var ch: Array[Character] = []
+	for i in range(4):
+		var cc := Character.new()
+		cc.seat = i
+		cc.alignment = Enums.Alignment.GOOD
+		cc.category = Enums.Category.VILLAGER
+		ch.append(cc)
+	ch[0].role = &"Hunter"
+	ch[2].role = &"Minion"
+	ch[2].alignment = Enums.Alignment.EVIL
+	ch[2].category = Enums.Category.MINION
+	ch[3].role = &"Demon"
+	ch[3].alignment = Enums.Alignment.EVIL
+	ch[3].category = Enums.Category.DEMON
+	vh.characters = ch
+	vh.evil_count = 2
+	vh.demon_count = 1
+	vh.minion_count = 1
+	vh.marks = [0, 0, 0, 0]
+	GameState.start_village(vh)
+	GameState.hunt(0, 2)  # Kurt (minion)
+	check(ch[2].executed, "Avcı kurdu vurdu (öldü)")
+	check(ch[0].ability_used, "Avcı yeteneği kullanıldı (tek sefer)")
+	ch[0].ability_used = false
+	var hp_before := GameState.health
+	GameState.hunt(0, 1)  # koyun
+	eq(GameState.health, hp_before - 3, "koyun vurunca -3 can")
+
+	# Üretici: slayer'lı köyler — 1 Kılıççı, tek-çözümlü.
+	var rng := RandomNumberGenerator.new()
+	var sc := 0
+	var s_ok := 0
+	var s_det := 0
+	for s in range(30):
+		rng.seed = 9900 + s
+		var conf := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "slayer": true, "seed": rng.seed}
+		var st: VillageState = VillageGenerator.generate(conf, rng)
+		if st == null:
+			continue
+		sc += 1
+		var slayers := 0
+		for c in st.characters:
+			if c.role == &"Slayer":
+				slayers += 1
+		if slayers == 1:
+			s_ok += 1
+		_give_all(st)
+		if DeductionSolver.is_determined(st.visible_for_solver()):
+			s_det += 1
+		_give_none(st)
+	check(sc >= 22, "slayer köyleri üretildi (%d/30)" % sc)
+	eq(s_ok, sc, "her köyde 1 Kılıççı")
+	eq(s_det, sc, "slayer köyleri tek-çözümlü")
+
+
+# -------------------------------------------------------------------
+func _test_ascension() -> void:
+	_section_start("Ascension kapsama (tüm düğümler üretilebilir mi)")
+
+	var fails: Array = []
+	for asc in range(7):
+		var nodes: Array = RunManager._build_map(asc, 55555)
+		for i in range(nodes.size()):
+			var cfg: Dictionary = nodes[i]["config"]
+			var rng := RandomNumberGenerator.new()
+			rng.seed = int(cfg["seed"])
+			var st: VillageState = VillageGenerator.generate(cfg, rng)
+			if st == null:
+				fails.append("asc%d/node%d" % [asc, i])
+	check(fails.is_empty(), "tüm ascension×düğüm üretilebilir (kırık: %s)" % str(fails))
+	print("  ascension kapsama: 7 asc × 5 düğüm = 35 köy denendi")
+
+	# V2 knob: A4 sorgu hakkını kısar.
+	var m4: Array = RunManager._build_map(4, 999)
+	eq(int(m4[1]["config"]["q_per_day"]), 2, "asc4: köy 1'de sorgu hakkı 3->2")
+	# Boss çifte av.
+	var m0: Array = RunManager._build_map(0, 999)
+	eq(int(m0[4]["config"].get("kills_per_night", 1)), 2, "boss gecede 2 av")
+
+
+# -------------------------------------------------------------------
+func _test_gameflow() -> void:
+	_section_start("GameState akışı (V2: sorgu + gece)")
+	var gs = GameState
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260720
+	var state := VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1, "seed": 20260720}, rng)
+	check(state != null, "gameflow köyü üretildi")
+	if state == null:
+		return
+
+	gs.start_village(state)
+	eq(gs.health, 10, "başlangıç can 10")
+	eq(gs.remaining_evil(), 2, "başta 2 kurt tehdit")
+	eq(state.day, 1, "gün 1")
+	eq(state.questions_left, 3, "3 sorgu hakkı")
+	check(gs.is_active(), "köy aktif")
+
+	# SORGU: ifade alınır, hak düşer; aynı karakter tekrar sorgulanabilir.
+	check(gs.question(0), "sorgu 1 başarılı")
+	eq(state.get_character(0).given, 1, "1 ifade verildi")
+	eq(state.questions_left, 2, "hak 3->2")
+	check(gs.question(0), "aynı karakter tekrar sorgulanabilir")
+	eq(state.get_character(0).given, 2, "2 ifade verildi")
+	check(not gs.question(0), "ifadesi bitince sorgu reddedilir (hak yanmaz)")
+	eq(state.questions_left, 1, "reddedilen sorgu hak yakmaz")
+	check(gs.question(1), "sorgu 3 başarılı")
+	check(not gs.question(2), "hak bitti -> sorgu reddedilir")
+
+	# GÜNÜ BİTİR: gece avı — bir koyun ölür, şafakta haklar tazelenir.
+	var killed := [-1]
+	EventBus.night_kill.connect(func(s): killed[0] = s, CONNECT_ONE_SHOT)
+	gs.end_day()
+	check(killed[0] >= 0, "gece bir kurban verdi")
+	check(state.get_character(killed[0]).night_killed, "kurban night_killed")
+	check(not state.get_character(killed[0]).is_evil(), "kurban her zaman koyundur")
+	eq(state.day, 2, "şafak: gün 2")
+	eq(state.questions_left, 3, "haklar tazelendi")
+	eq(state.night_events.size(), 1, "gece olayı kayıtlı")
+
+	# Ölü sorgulanamaz.
+	check(not gs.question(killed[0]), "ölü karakter sorgulanamaz")
+
+	# Yanlış ayıklama -5.
+	var good_seat := -1
+	for c in state.characters:
+		if not c.is_evil() and c.is_alive():
+			good_seat = c.seat
+			break
+	gs.execute(good_seat)
+	eq(gs.health, 5, "yanlış ayıklama -5 can")
+	check(gs.is_active(), "1 hata sonrası hâlâ aktif")
+
+	# Tüm kurtları ayıkla -> kazanç (+bonuslar).
+	var won := [false]
+	EventBus.village_won.connect(func(_s): won[0] = true, CONNECT_ONE_SHOT)
+	for c in state.characters:
+		if c.is_evil():
+			gs.execute(c.seat)
+	eq(gs.remaining_evil(), 0, "tüm kurtlar ayıklandı")
+	check(won[0], "village_won sinyali yayıldı")
+	eq(gs.phase, Enums.GamePhase.VILLAGE_END, "faz VILLAGE_END")
+	check(gs.score >= 200 + 50, "skor: 2 kurt + can bonusu + gün bonusu (%d)" % gs.score)
+
+	# KAYIP: şafaklar tükenirse köy düşer.
+	var st2 := _make_state(9, [4])
+	st2.max_days = 2
+	gs.start_village(st2)
+	var lost := [false]
+	EventBus.village_lost.connect(func(_r): lost[0] = true, CONNECT_ONE_SHOT)
+	gs.end_day()  # gece 1 -> gün 2
+	check(gs.is_active(), "gün 2'de hâlâ aktif")
+	gs.end_day()  # gece 2 -> gün 3 > max_days=2 -> kayıp
+	check(lost[0], "şafaklar tükenince köy düşer")
+
+	# KAYIP: sürü kurt sayısına inerse.
+	var st3 := _make_state(4, [1, 3])  # 2 koyun 2 kurt
+	gs.start_village(st3)
+	var lost2 := [false]
+	EventBus.village_lost.connect(func(_r): lost2[0] = true, CONNECT_ONE_SHOT)
+	gs.end_day()  # 1 koyun ölür -> 1 <= 2 -> kayıp
+	check(lost2[0], "sürü kurda yenik düşünce köy düşer")
+
+	# Mark sistemi.
+	var st4 := _make_state(5, [2])
+	gs.start_village(st4)
+	gs.set_mark(0, Enums.MarkType.MARK_EVIL)
+	eq(st4.marks[0], Enums.MarkType.MARK_EVIL, "mark kaydedildi")
+
+
+# -------------------------------------------------------------------
+func _test_run_manager() -> void:
+	_section_start("RunManager")
+	var rm = RunManager
+
+	rm.start_run(0, 999)
+	check(rm.has_active_run(), "sefer aktif")
+	eq(rm.nodes.size(), 5, "harita 5 düğüm (4 köy + boss)")
+	eq(rm.current_index, 0, "başlangıç düğümü 0")
+	eq(int(rm.current_village_config()["n"]), 5, "ilk köy n=5")
+	check(rm.is_current_boss() == false, "ilk düğüm boss değil")
+	eq(rm.coins, 0, "başta 0 para")
+
+	for i in range(4):
+		rm.on_village_won(100, 8)
+	eq(rm.current_index, 4, "4 köy sonrası son düğümde")
+	check(rm.is_current_boss(), "son düğüm boss")
+	eq(rm.last_outcome, Enums.RunOutcome.VILLAGE_WON, "ara sonuç VILLAGE_WON")
+
+	var run_done := [false]
+	EventBus.run_completed.connect(func(_s, _c): run_done[0] = true, CONNECT_ONE_SHOT)
+	rm.on_village_won(100, 8)
+	eq(rm.last_outcome, Enums.RunOutcome.RUN_WON, "sefer kazanıldı")
+	check(not rm.has_active_run(), "sefer bitti (pasif)")
+	check(run_done[0], "run_completed sinyali")
+	eq(rm.total_score, 500, "toplam skor 5*100")
+	eq(rm.coins, 4 * 65 + 115, "para: 4 köy(65) + boss(65+50)")
+	eq(rm.max_ascension_unlocked, 1, "A2 açıldı")
+
+	# Ascension ölçekleme: tutorial sade kalır.
+	var m4: Array = rm._build_map(4, 999)
+	eq(int(m4[0]["config"]["evil_count"]), 1, "tutorial ascension'da sade kalır (evil 1)")
+
+	rm.start_run(0, 5)
+	rm.on_village_lost()
+	eq(rm.last_outcome, Enums.RunOutcome.RUN_LOST, "sefer düştü")
+	check(not rm.has_active_run(), "kayıpta sefer pasif")
+
+	# --- Günün Seferi: tarih tohumlu, kazanınca günlük rekor işlenir ---
+	rm.start_daily()
+	check(rm.is_daily, "günlük sefer bayrağı")
+	eq(rm.run_seed, RunManager.today_int() * 7 + 3, "tohum tarihten türedi")
+	for i in range(5):
+		rm.on_village_won(100, 8)
+	eq(rm.stat_daily_date, RunManager.today_int(), "günlük rekor tarihi bugün")
+	eq(rm.stat_daily_best, 500, "günlük en iyi skor kaydedildi")
+	check(not rm.is_daily or not rm.active, "günlük sefer bitti")
+
+	# --- Bereket Boynuzu: maks can 12 ---
+	rm.start_run(0, 6)
+	rm.owned_passives.append(&"bereket")
+	var bs := _make_state(5, [2])
+	GameState.start_village(bs)
+	eq(GameState.health, 12, "Bereket ile köy 12 canla başlar")
+	rm.owned_passives.clear()
+	rm.active = false
+
+
+# -------------------------------------------------------------------
+func _test_save_manager() -> void:
+	_section_start("SaveManager")
+	var rm = RunManager
+	SaveManager.delete_save()
+	check(not SaveManager.has_save(), "temiz başlangıç: kayıt yok")
+
+	rm.stat_villages_cleared = 0
+	rm.stat_runs_won = 0
+	rm.stat_best_score = 0
+	rm.stat_best_ascension = 0
+	rm.start_run(1, 424242)
+	rm.on_village_won(100, 6)  # index 0 -> 1
+	rm.on_village_won(100, 4)  # index 1 -> 2
+	check(rm.stat_villages_cleared >= 2, "rekor: kurtarılan köy sayacı arttı")
+	SaveManager.save_game()
+	check(SaveManager.has_save(), "kayıt yazıldı")
+
+	var saved_index: int = rm.current_index
+	var saved_coins: int = rm.coins
+	var saved_score: int = rm.total_score
+	var saved_cleared: int = rm.stat_villages_cleared
+
+	rm.active = false
+	rm.current_index = 0
+	rm.coins = 0
+	rm.total_score = 0
+	rm.stat_villages_cleared = 0
+	var ok := SaveManager.load_game()
+	check(ok, "kayıt yüklendi")
+	check(rm.has_active_run(), "yükleme sonrası sefer aktif")
+	eq(rm.ascension, 1, "ascension geri geldi")
+	eq(rm.current_index, saved_index, "düğüm ilerlemesi geri geldi")
+	eq(rm.coins, saved_coins, "para geri geldi")
+	eq(rm.total_score, saved_score, "skor geri geldi")
+	eq(rm.nodes.size(), 5, "harita seed'den yeniden kuruldu")
+	check(rm.nodes[0]["cleared"] and rm.nodes[1]["cleared"], "temizlenen düğümler geri geldi")
+	eq(rm.stat_villages_cleared, saved_cleared, "rekor: kurtarılan köy geri geldi")
+
+	SaveManager.delete_save()
+	rm.active = false
+	rm.save_loaded = false
+
+
+func _expected_claim_type(role: StringName) -> int:
+	match role:
+		&"Judge", &"Confessor": return Enums.TestimonyType.ALIGNMENT_OF
+		&"Oracle", &"Dreamer": return Enums.TestimonyType.COUNT_IN_SET
+		&"Knight", &"Sentry": return Enums.TestimonyType.NEIGHBOR_HAS_EVIL
+		&"Scout": return Enums.TestimonyType.NEAREST_EVIL_DISTANCE
+		&"Enlightened": return Enums.TestimonyType.NEAREST_EVIL_DIRECTION
+		&"Architect": return Enums.TestimonyType.EVIL_COUNT_IN_REGION
+		&"Lover", &"Gossip": return Enums.TestimonyType.PAIR_RELATION
+		_: return Enums.TestimonyType.ALIGNMENT_OF
+
+
+# -------------------------------------------------------------------
+func _test_board_smoke() -> void:
+	_section_start("VillageBoard smoke (UI instantiate)")
+	var board_scene := load("res://scenes/village_board.tscn")
+	check(board_scene != null, "board sahnesi yüklendi")
+	if board_scene == null:
+		return
+	var board = board_scene.instantiate()
+	add_child(board)  # _ready tetiklenir: köy üretir, kartları döşer, HUD kurar
+
+	var card_count := 0
+	var has_hud := false
+	for child in board.get_children():
+		if child is CardView:
+			card_count += 1
+		if child is Hud:
+			has_hud = true
+	eq(card_count, 7, "7 kart oluşturuldu")
+	check(has_hud, "HUD eklendi")
+	check(GameState.village != null, "board köy başlattı")
+
+	# Bir sorgu simüle et.
+	var alive0: int = GameState.village.alive_seats()[0]
+	check(GameState.question(alive0), "sorgu çalıştı")
+	check(GameState.village.get_character(alive0).given == 1, "ifade verildi")
+
+	board.queue_free()

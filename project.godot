@@ -1,0 +1,37 @@
+; NAZAR — Godot 4.3+ project
+; M0: headless deduction engine. UI scenes come in M1.
+
+config_version=5
+
+[application]
+
+config/name="NAZAR"
+config/description="Anadolu folk-horror sosyal cikarim / roguelike dedüksiyon kart oyunu."
+config/features=PackedStringArray("4.3")
+run/main_scene="res://scenes/run_map.tscn"
+
+[autoload]
+
+EventBus="*res://autoload/event_bus.gd"
+Rng="*res://autoload/rng.gd"
+GameState="*res://autoload/game_state.gd"
+RunManager="*res://autoload/run_manager.gd"
+SaveManager="*res://autoload/save_manager.gd"
+AudioManager="*res://autoload/audio_manager.gd"
+GameMenu="*res://autoload/game_menu.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[gui]
+
+theme/custom_font="res://assets/fonts/Aminute.otf"
+theme/default_font_multichannel_signed_distance_field=true
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
