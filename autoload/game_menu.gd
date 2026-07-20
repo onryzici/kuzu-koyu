@@ -7,8 +7,9 @@ extends Node
 var _layer: CanvasLayer
 var _root: Control
 var _open := false
-var _rules_overlay: Control = null      ## ESC menüsünden açılan kurallar (overlay)
+var _rules_overlay: Control = null      ## ESC menüsünden / HUD "?"den açılan kurallar
 var _settings_overlay: Control = null   ## ESC menüsünden açılan ayarlar (overlay)
+var _codex_overlay: Control = null      ## Ayarlar'dan açılan Karakterler (overlay)
 var _loc_nodes: Array = []              ## [node, loc_anahtarı] — menü açılırken tazelenir
 
 
@@ -54,7 +55,7 @@ func _build() -> void:
 	_loc_nodes.append([title, "pause_title"])
 
 	_add_button(box, "pause_resume", _resume)
-	_add_button(box, "menu_rules", _open_rules)
+	_add_button(box, "menu_rules", open_rules)
 	_add_button(box, "menu_settings", _open_settings)
 	_add_button(box, "pause_fullscreen", _toggle_fullscreen)
 	_add_button(box, "pause_main", _to_main)
@@ -88,8 +89,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_fullscreen()
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
-			# Açık overlay (ayarlar/kurallar) varsa önce onu kapat, yoksa menü.
-			if is_instance_valid(_settings_overlay):
+			# Açık overlay (karakterler/ayarlar/kurallar) varsa üstteni kapat, yoksa menü.
+			if is_instance_valid(_codex_overlay):
+				_codex_overlay.queue_free()
+			elif is_instance_valid(_settings_overlay):
 				_settings_overlay.queue_free()
 			elif is_instance_valid(_rules_overlay):
 				_rules_overlay.queue_free()
@@ -98,14 +101,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
-## ESC menüsünden Kurallar'ı overlay olarak aç (oyunu kaybetmeden).
-func _open_rules() -> void:
+## Kurallar'ı overlay olarak aç (oyunu kaybetmeden). ESC menüsü + HUD "?" butonu
+## bunu çağırır — ana menüdeki Kurallar butonu kaldırıldı (menü sadeleşti).
+func open_rules() -> void:
 	if is_instance_valid(_rules_overlay):
 		return
 	var r: Control = load("res://scenes/rules.tscn").instantiate()
 	r.overlay_mode = true
 	_layer.add_child(r)  # pause menüsünün ÜSTÜnde (en son eklenen)
 	_rules_overlay = r
+
+
+## Karakterler (Codex) overlay'i — Ayarlar ekranındaki buton çağırır.
+func open_codex() -> void:
+	if is_instance_valid(_codex_overlay):
+		return
+	var cdx: Control = load("res://scenes/codex.tscn").instantiate()
+	cdx.overlay_mode = true
+	_layer.add_child(cdx)
+	_codex_overlay = cdx
 
 
 ## ESC menüsünden Ayarlar'ı overlay olarak aç.

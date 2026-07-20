@@ -13,13 +13,42 @@ var score: int = 0
 var phase: int = Enums.GamePhase.SETUP
 var _shield_used := false     ## Kalkan muskası: köy başına 1 hasarsız yanlış
 var _night_grace := false     ## Pusula muskası: ilk gece av olmaz
+var _q_bought := 0            ## bu köyde parayla alınan sorgu sayısı (fiyat tırmanır)
+
+## Köy içi SORGU SATIN ALMA: para çekirdek döngüde işe yarasın (kullanıcı isteği).
+## Fiyat her alışta tırmanır — sınırsız bilgiye para yetmez (denge).
+const Q_BUY_BASE := 25
+const Q_BUY_STEP := 15
 
 
-## Maks can — Bereket muskası +2 (yalnız aktif seferde).
+func question_price() -> int:
+	return Q_BUY_BASE + _q_bought * Q_BUY_STEP
+
+
+## Parayla +1 sorgu hakkı (yalnız aktif seferde; para RunManager'da). true = alındı.
+func buy_question() -> bool:
+	if not is_active() or not RunManager.has_active_run():
+		return false
+	var price := question_price()
+	if RunManager.coins < price:
+		return false
+	RunManager.coins -= price
+	_q_bought += 1
+	village.questions_left += 1
+	EventBus.question_bought.emit(village.questions_left, RunManager.coins)
+	SaveManager.save_game()
+	return true
+
+
+## Maks can — Bereket muskası +2; Kanlı Tılsım (lanetli) −2 (yalnız aktif seferde).
 func max_health() -> int:
-	if RunManager.has_active_run() and RunManager.has_passive(&"bereket"):
-		return MAX_HEALTH + 2
-	return MAX_HEALTH
+	var hp := MAX_HEALTH
+	if RunManager.has_active_run():
+		if RunManager.has_passive(&"bereket"):
+			hp += 2
+		if RunManager.has_passive(&"kanli"):
+			hp -= 2
+	return hp
 
 
 func start_village(state: VillageState) -> void:
@@ -28,6 +57,7 @@ func start_village(state: VillageState) -> void:
 	score = 0
 	_shield_used = false
 	_night_grace = false
+	_q_bought = 0
 	village.day = 1
 	village.questions_left = village.q_per_day
 	# Muska etkileri (dükkândan, §4). Yalnız aktif seferde.
@@ -42,6 +72,13 @@ func start_village(state: VillageState) -> void:
 		if RunManager.has_passive(&"hafiza"):
 			village.q_per_day += 1
 			village.questions_left += 1
+		# Kanlı Tılsım (lanetli): +1 sorgu/gün — bedeli max_health()'te (−2 can).
+		if RunManager.has_passive(&"kanli"):
+			village.q_per_day += 1
+			village.questions_left += 1
+		# Kara Kese (lanetli): köy ödülü +25 altın; bedeli — köye 1 can eksik başla.
+		if RunManager.has_passive(&"karakese"):
+			health = maxi(1, health - 1)
 		# Pusula: ilk gece kurt avlanamaz (sürü bir şafak kazanır).
 		if RunManager.has_passive(&"pusula"):
 			_night_grace = true
@@ -60,11 +97,15 @@ func start_village(state: VillageState) -> void:
 	_set_phase(Enums.GamePhase.REVEAL_IDLE)
 
 
-## Yanlış ayıklama hasarı — Zırh muskası varsa azalır (§4).
+## Yanlış ayıklama hasarı — köyün cezası (Kuraklık modifier'ı 7'ye çıkarır);
+## Zırh muskası 2 azaltır (§4).
 func wrong_execute_damage() -> int:
+	var dmg := WRONG_EXECUTE_DAMAGE
+	if village != null:
+		dmg = village.cull_damage
 	if RunManager.has_active_run() and RunManager.has_passive(&"zirh"):
-		return 3
-	return WRONG_EXECUTE_DAMAGE
+		dmg = maxi(1, dmg - 2)
+	return dmg
 
 
 func _set_phase(p: int) -> void:

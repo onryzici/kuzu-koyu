@@ -1,5 +1,42 @@
 # Güncelleme Notları
 
+## 2026-07-20 (3) — 3 Perde, Ekonomi ve Büyük Cila
+
+### Sefer yapısı
+- **3 PERDE harita (17 durak):** Yayla → Vadi → Kara Orman. 8 köy, 2 ELİT köy
+  (isteğe bağlı — zor ama bedava muska ödüllü, atlanabilir), 2 mini-boss
+  (İlk Uluma, Pusudaki Gölge), 3 olay, 3 dükkân ve büyütülmüş Alfa finali.
+- **Köy modifier'ları** (köy başında ilan edilir): Suskun Sürü (herkes tek ifade),
+  Kanlı Ay (gecede 2 av · +1 sorgu), Kuraklık (yanlış avlama −7 can).
+- **Sefer destesi + rol draft'ı:** sefer 12 temel rolle başlar; her köy zaferinin
+  ardından "Sürüye Yeni Kan" — 3 adaydan biri desteye katılır.
+- **Sonsuz Sürü:** final boss'tan sonra zincir sürdürülebilir; köyler gitgide sertleşir.
+- **Köye giriş kartı:** perde adı + seed'li köy adı (Revoback başlık) + kompozisyon
+  + modifier uyarıları; kart kalkarken deste dağıtılır.
+
+### Ekonomi
+- **Köy içinde sorgu satın alma:** HUD'daki para puluyla +1 sorgu (fiyat her
+  alışta tırmanır: 25→40→55 ₿).
+- **Dükkân v2:** MUSKALAR (lanetliler ⚠ işaretli: Kanlı Tılsım, Kara Kese) +
+  AZIKLAR (tek köylük: Tuz Torbası, Kandil Yağı, Yıldız Haritası) + YENİ KAN
+  (parayla draft) + YENİDEN KARIŞTIR.
+
+### Arayüz & his
+- Yeni ana menü: kurt görseli, sol yarıda sade menü (Kurallar → oyun içi "?" +
+  ESC; Karakterler → Ayarlar), Revoback başlık, mum parıltıları, uzak ulumalar.
+- Boot ekranı: CODEZU + sağlık uyarısı el yazısı fontta (CasualHuman), dikey ortalı.
+- Kurt ölümü yeniden: kart bölünmüyor — yerinde pençeleniyor, yara izleri ve
+  çevresinde kuruyup koyulaşan kan lekeleriyle tahtada kalıyor.
+- Zafer akışı temizlendi (yazı/kart çakışması bitti); draft köy biterken geliyor.
+
+### Adalet & teknik
+- **Yalan inandırıcılığı:** yalanlar artık herkesin bildiği gerçeklerle (kurt
+  sayısı, çember boyutu) çelişemez — "2 kurtlu köyde 3 kurt" bitti.
+- Uyarı ekranı metinleri ASCII (el yazısı fontta bozuk glyph kalmadı).
+- Performans: çelişki matrisi artımlı; 4K arka planlar BC7 + mipmap (VRAM ~4×↓).
+- Test paketi 614 → **658** (perde haritası, modifier'lar, deste, endless,
+  ekonomi ve yalan-inandırıcılık denetimleri dahil).
+
 ## 2026-07-20 (2) — WOLF IN WOOL + İngilizce Dil Desteği
 
 - Oyunun adı artık **WOLF IN WOOL** (proje adı, pencere başlığı, çalıştırılabilir

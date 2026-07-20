@@ -19,7 +19,9 @@ func _ready() -> void:
 	_test_solver()
 	_test_night_engine()
 	_test_generator()
+	_test_lie_plausibility()
 	_test_budget()
+	_test_features()
 	_test_omen()
 	_test_outcast()
 	_test_slayer()
@@ -445,6 +447,74 @@ func _test_generator() -> void:
 
 
 # -------------------------------------------------------------------
+## İnandırıcılık (§7.3): HİÇBİR ifade — yalan bile — herkesin bildiği gerçeklerle
+## (n koltuk + ilan edilmiş kurt sayısı) çelişemez. "2 kurtlu köyde 3 kurt gördüm"
+## veya "5 koltukta 4 adım öte" gibi alenen imkânsız değerler yalancıyı bedavaya
+## ele verir. Bkz. VillageGenerator._false_claim inandırıcılık kuralı.
+func _test_lie_plausibility() -> void:
+	_section_start("Yalan inandırıcılığı (kamusal bilgiyle çelişki yok)")
+	var rng := RandomNumberGenerator.new()
+	var configs := [
+		{"n": 5, "evil_count": 1, "demon_count": 1, "anchor_count": 1},   # tek kurt (İzci/Bekçi bug'ları)
+		{"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1},
+		{"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2},  # tek sayıda kurt + çift n (Mimar/Aynacı)
+	]
+	var checked := 0
+	var bad := 0
+	var bad_msg := ""
+	for cfg in configs:
+		for s in range(1, 26):
+			rng.seed = s * 4241 + int(cfg["n"]) * 977
+			var conf: Dictionary = cfg.duplicate()
+			conf["seed"] = int(rng.seed)
+			var state := VillageGenerator.generate(conf, rng)
+			if state == null:
+				continue
+			var e: int = state.evil_count
+			for c in state.characters:
+				for cl in c.claims:
+					checked += 1
+					if not _claim_plausible(cl, state.n, e):
+						bad += 1
+						if bad_msg == "":
+							bad_msg = "seat=%d rol=%s tip=%d num=%d" % [c.seat, c.role, cl.type, cl.number]
+	print("  denetlenen ifade: %d" % checked)
+	check(checked > 300, "yeterli ifade örneklendi (%d)" % checked)
+	eq(bad, 0, "alenen imkânsız ifade yok (ilk ihlal: %s)" % bad_msg)
+
+
+## Bir ifadenin yalnız KAMUSAL bilgiyle (n, kurt sayısı e; konuşan İYİ varsayımıyla)
+## mümkün olup olmadığı. Üretici tüm ifadeleri bu süzgeçten geçirmiş olmalı.
+func _claim_plausible(cl: TestimonyClaim, n: int, e: int) -> bool:
+	var maxd := VillageGenerator._max_nearest_dist(n, e)
+	match cl.type:
+		Enums.TestimonyType.COUNT_IN_SET:
+			return cl.number >= 0 and cl.number <= mini(cl.targets.size(), e)
+		Enums.TestimonyType.COUNT_PARITY_IN_SET:
+			return true
+		Enums.TestimonyType.NEIGHBOR_HAS_EVIL:
+			return cl.number >= 0 and cl.number <= mini(2, e)
+		Enums.TestimonyType.NEAREST_EVIL_DISTANCE:
+			return cl.number >= 1 and cl.number <= maxd
+		Enums.TestimonyType.NEAREST_EVIL_MIN_DIST:
+			if cl.compare == Enums.Compare.GREATER:
+				return cl.number >= 1 and cl.number < maxd  # "d>k": k=maxd olsa hiç kimse sağlayamaz
+			return cl.number >= 2 and cl.number <= maxd     # "d<k": k<2 hiç, k>maxd boş laf
+		Enums.TestimonyType.WOLF_GAP:
+			return cl.number >= 1 and cl.number <= int(n / float(maxi(e, 1)))
+		Enums.TestimonyType.NEAREST_EVIL_DIRECTION:
+			if cl.direction == Enums.Direction.EQUIDISTANT:
+				return e >= 2 or n % 2 == 0
+			return true
+		Enums.TestimonyType.EVIL_COUNT_IN_REGION:
+			if cl.compare == Enums.Compare.EQUAL:
+				return e % 2 == 0
+			return true
+		_:
+			return true
+
+
+# -------------------------------------------------------------------
 func _test_budget() -> void:
 	_section_start("Bütçe garantisi (bot: sorgu + gece içinde çözülebilir)")
 	# Üretilen her köy, botun sorgu bütçesi + gün sınırı içinde çözebildiği köydür.
@@ -472,6 +542,142 @@ func _test_budget() -> void:
 	check(tight != null, "çifte-av (boss) köyü üretilebildi")
 	if tight != null:
 		eq(tight.kills_per_night, 2, "kills_per_night state'e işledi")
+
+
+# -------------------------------------------------------------------
+## Yeni içerik kolları: modifier'lar (Suskun/Kuraklık/Kanlı Ay), sefer destesi
+## (role_pool + draft), Sonsuz Sürü spec'leri, lanetli muskalar.
+func _test_features() -> void:
+	_section_start("Modifier + deste + endless + lanetli muska")
+	var rng := RandomNumberGenerator.new()
+
+	# SUSKUN SÜRÜ: herkes tek ifade — yine de tek-çözümlü + bot-bütçe garantili.
+	var silent_ok := 0
+	for s in range(12):
+		rng.seed = 71000 + s
+		var st: VillageState = VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1,
+			"anchor_count": 2, "modifiers": ["silent"], "q_per_day": 3, "max_days": 5, "seed": rng.seed}, rng)
+		if st == null:
+			continue
+		var all_one := true
+		for c in st.characters:
+			if c.claims.size() > 1:
+				all_one = false
+		if all_one and st.modifiers.has("silent"):
+			silent_ok += 1
+	check(silent_ok >= 10, "Suskun Sürü köyleri üretildi + herkes tek ifadeli (%d/12)" % silent_ok)
+
+	# KURAKLIK: cull_damage köye işler, yanlış avlama −7.
+	rng.seed = 72000
+	var dst: VillageState = VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1,
+		"cull_damage": 7, "modifiers": ["drought"], "seed": 72000}, rng)
+	check(dst != null, "Kuraklık köyü üretildi")
+	if dst != null:
+		eq(dst.cull_damage, 7, "cull_damage state'e işledi")
+		GameState.start_village(dst)
+		var good := -1
+		for c in dst.characters:
+			if not c.is_evil():
+				good = c.seat
+				break
+		GameState.execute(good)
+		eq(GameState.health, 3, "Kuraklıkta yanlış avlama −7 can")
+		GameState.village = null
+
+	# SEFER DESTESİ: role_pool verilince koyun rolleri yalnız havuzdan gelir.
+	rng.seed = 73000
+	var pool := [&"Judge", &"Oracle", &"Knight", &"Scout", &"Enlightened", &"Gossip"]
+	var pst: VillageState = VillageGenerator.generate({"n": 7, "evil_count": 2, "demon_count": 1,
+		"role_pool": pool, "seed": 73000}, rng)
+	check(pst != null, "deste köyü üretildi")
+	if pst != null:
+		var pool_ok := true
+		for c in pst.characters:
+			if c.is_evil():
+				if not pool.has(c.bluff_role):
+					pool_ok = false
+			elif c.category == Enums.Category.VILLAGER \
+					and not (c.role in [&"Astrologer", &"Slayer", &"Hunter", &"Trapper"]):
+				if not pool.has(c.role):
+					pool_ok = false
+		check(pool_ok, "tüm koyun rolleri + bluff'lar desteden geldi")
+
+	# GEÇ OYUN + DESTE: en büyük köy (n=12) başlangıç destesiyle de üretilebilmeli
+	# (canlıda draft yapılmadan Kara Orman'a gelinebilir).
+	rng.seed = 73500
+	var late_cfg := {"n": 12, "evil_count": 3, "demon_count": 1, "anchor_count": 2,
+		"omen_type": Enums.OmenType.DISPERSED, "trapper": true, "kills_per_night": 2,
+		"q_per_day": 4, "max_days": 6, "role_pool": RunManager.STARTER_POOL.duplicate(), "seed": 73500}
+	check(VillageGenerator.generate(late_cfg, rng) != null, "n=12 köy başlangıç destesiyle üretilebilir")
+
+	# SONSUZ SÜRÜ: ilk 6 endless spec'i üretilebilir (bot-bütçe garantili) olmalı.
+	RunManager.run_seed = 74000
+	RunManager.ascension = 0
+	var e_fails: Array = []
+	for k in range(6):
+		var node: Dictionary = RunManager._endless_node(k)
+		var cfg: Dictionary = node["config"]
+		var erng := RandomNumberGenerator.new()
+		erng.seed = int(cfg["seed"])
+		if VillageGenerator.generate(cfg, erng) == null:
+			e_fails.append(k)
+	check(e_fails.is_empty(), "endless köyleri üretilebilir (kırık: %s)" % str(e_fails))
+
+	# DRAFT: seçenekler deterministik, uygula → deste büyür.
+	RunManager.start_run(0, 424001)
+	var ch1 := RunManager.draft_choices()
+	var ch2 := RunManager.draft_choices()
+	eq(ch1, ch2, "draft adayları deterministik (aynı seed→aynı liste)")
+	check(ch1.size() == 3, "3 draft adayı sunuldu")
+	var before: int = RunManager.role_pool.size()
+	RunManager.apply_draft(ch1[0])
+	eq(RunManager.role_pool.size(), before + 1, "draft rolü desteye eklendi")
+	check(not RunManager.pending_draft, "draft tüketildi")
+	RunManager.active = false
+
+	# LANETLİ MUSKALAR: Kanlı Tılsım (+1 sorgu, −2 maks can), Kara Kese (−1 canla başla).
+	RunManager.start_run(0, 424002)
+	RunManager.owned_passives = [&"kanli", &"karakese"]
+	var cst := _make_state(5, [2])
+	var base_q2: int = cst.q_per_day
+	GameState.start_village(cst)
+	eq(GameState.max_health(), 8, "Kanlı Tılsım: maks can 10→8")
+	eq(cst.q_per_day, base_q2 + 1, "Kanlı Tılsım: +1 sorgu/gün")
+	eq(GameState.health, 7, "Kara Kese: köye 1 can eksik başlandı (8−1)")
+	RunManager.owned_passives.clear()
+	RunManager.active = false
+	GameState.village = null
+
+	# EKONOMİ: köy içi sorgu satın alma (tırmanan fiyat) + azık + dükkân reroll'u.
+	RunManager.start_run(0, 424003)
+	RunManager.coins = 100
+	var est := _make_state(5, [2])
+	GameState.start_village(est)
+	eq(GameState.question_price(), 25, "ilk sorgu fiyatı 25")
+	check(GameState.buy_question(), "sorgu satın alındı")
+	eq(est.questions_left, 4, "sorgu hakkı 3→4")
+	eq(RunManager.coins, 75, "para düştü (100−25)")
+	eq(GameState.question_price(), 40, "fiyat tırmandı 25→40")
+	check(GameState.buy_question(), "ikinci sorgu alındı")
+	eq(RunManager.coins, 35, "para 75−40=35")
+	check(not GameState.buy_question(), "para yetmeyince satılmaz (55 gerek)")
+	# Azık: para düşer, pending_boons'a girer; SONRAKİ köy başında işler.
+	RunManager.coins = 100
+	check(RunManager.buy_boon(&"extra_q"), "azık alındı")
+	eq(RunManager.coins, 70, "azık parası düştü (30)")
+	check(RunManager.pending_boons.has(&"extra_q"), "azık beklemede")
+	var est2 := _make_state(5, [2])
+	var eq0: int = est2.q_per_day
+	GameState.start_village(est2)
+	eq(est2.q_per_day, eq0 + 1, "azık sonraki köyde işledi (+1 sorgu/gün)")
+	check(RunManager.pending_boons.is_empty(), "azık tüketildi (tek köylük)")
+	# Reroll: salt deterministik ve farklı karışım verir.
+	var r0 := RunManager.roll_shop(0)
+	var r1 := RunManager.roll_shop(1)
+	eq(RunManager.roll_shop(1), r1, "reroll deterministik (aynı salt → aynı teklif)")
+	check(r0 != r1, "reroll farklı teklif üretir")
+	RunManager.active = false
+	GameState.village = null
 
 
 # -------------------------------------------------------------------
@@ -855,13 +1061,18 @@ func _test_run_manager() -> void:
 
 	rm.start_run(0, 999)
 	check(rm.has_active_run(), "sefer aktif")
-	eq(rm.nodes.size(), 7, "harita 7 düğüm (4 köy + olay + dükkân + boss)")
+	# 3 perde: 8 köy + 2 elit + 2 mini-boss + 3 olay + 3 dükkân + final = 17 düğüm.
+	eq(rm.nodes.size(), 17, "harita 17 düğüm (3 perde)")
 	eq(rm.current_index, 0, "başlangıç düğümü 0")
 	eq(int(rm.current_village_config()["n"]), 5, "ilk köy n=5")
 	check(rm.is_current_boss() == false, "ilk düğüm boss değil")
 	eq(rm.coins, 0, "başta 0 para")
 	eq(int(rm.nodes[2]["type"]), Enums.NodeType.EVENT, "3. düğüm OLAY")
-	eq(int(rm.nodes[4]["type"]), Enums.NodeType.SHOP, "5. düğüm DÜKKÂN")
+	eq(int(rm.nodes[3]["type"]), Enums.NodeType.ELITE, "4. düğüm ELİT köy")
+	check(bool(rm.nodes[4]["config"].get("miniboss", false)), "5. düğüm mini-boss")
+	eq(int(rm.nodes[5]["type"]), Enums.NodeType.SHOP, "6. düğüm DÜKKÂN")
+	eq(int(rm.nodes[15]["type"]), Enums.NodeType.SHOP, "finalden önce DÜKKÂN")
+	eq(int(rm.nodes[16]["type"]), Enums.NodeType.BOSS, "son düğüm Alfa finali")
 
 	# Haritayı boss'a kadar yürü: köyler kazanılır, duraklar tamamlanır.
 	while not rm.is_last_node():
@@ -870,10 +1081,12 @@ func _test_run_manager() -> void:
 			rm.on_stop_completed()
 		else:
 			rm.on_village_won(100, 8)
-	eq(rm.current_index, 6, "boss'a gelindi (6. indeks)")
+	eq(rm.current_index, 16, "boss'a gelindi (16. indeks)")
 	check(rm.is_current_boss(), "son düğüm boss")
 	eq(rm.last_outcome, Enums.RunOutcome.VILLAGE_WON, "ara sonuç VILLAGE_WON")
-	check(rm.nodes[2]["cleared"] and rm.nodes[4]["cleared"], "durak düğümleri tamamlandı")
+	check(rm.nodes[2]["cleared"] and rm.nodes[5]["cleared"], "durak düğümleri tamamlandı")
+	check(rm.owned_passives.size() >= 2, "iki elit köy iki muska hediye etti")
+	check(rm.pending_draft, "köy zaferi rol draft'ı bekletiyor")
 
 	var run_done := [false]
 	EventBus.run_completed.connect(func(_s, _c): run_done[0] = true, CONNECT_ONE_SHOT)
@@ -881,9 +1094,21 @@ func _test_run_manager() -> void:
 	eq(rm.last_outcome, Enums.RunOutcome.RUN_WON, "sefer kazanıldı")
 	check(not rm.has_active_run(), "sefer bitti (pasif)")
 	check(run_done[0], "run_completed sinyali")
-	eq(rm.total_score, 500, "toplam skor 5*100")
-	eq(rm.coins, 4 * 65 + 115, "para: 4 köy(65) + boss(65+50)")
+	eq(rm.total_score, 1100, "toplam skor 11*100")
+	# Para: 8 köy/elit (65) + 2 mini-boss (65+25) + final (65+50).
+	eq(rm.coins, 8 * 65 + 2 * 90 + 115, "para: köyler + mini-boss + final")
 	eq(rm.max_ascension_unlocked, 1, "A2 açıldı")
+
+	# --- SONSUZ SÜRÜ: final sonrası zincir sürer, kayıpta biter ---
+	rm.continue_endless()
+	check(rm.has_active_run(), "endless: sefer yeniden aktif")
+	eq(rm.nodes.size(), 18, "endless: yeni köy düğümü eklendi")
+	eq(int(rm.current_node()["type"]), Enums.NodeType.VILLAGE, "endless düğümü köy")
+	rm.on_village_won(100, 8)
+	check(rm.has_active_run(), "endless: kazanınca zincir devam ediyor")
+	eq(rm.nodes.size(), 19, "endless: bir köy daha eklendi")
+	rm.on_village_lost()
+	check(not rm.has_active_run(), "endless: kayıpla biter")
 
 	# Ascension ölçekleme: tutorial sade kalır.
 	var m4: Array = rm._build_map(4, 999)
@@ -905,7 +1130,7 @@ func _test_run_manager() -> void:
 		else:
 			rm.on_village_won(100, 8)
 	eq(rm.stat_daily_date, RunManager.today_int(), "günlük rekor tarihi bugün")
-	eq(rm.stat_daily_best, 500, "günlük en iyi skor kaydedildi")
+	eq(rm.stat_daily_best, 1100, "günlük en iyi skor kaydedildi (11 köy × 100)")
 	check(not rm.is_daily or not rm.active, "günlük sefer bitti")
 
 	# --- Bereket Boynuzu: maks can 12 ---
@@ -975,7 +1200,7 @@ func _test_save_manager() -> void:
 	eq(rm.current_index, saved_index, "düğüm ilerlemesi geri geldi")
 	eq(rm.coins, saved_coins, "para geri geldi")
 	eq(rm.total_score, saved_score, "skor geri geldi")
-	eq(rm.nodes.size(), 7, "harita seed'den yeniden kuruldu")
+	eq(rm.nodes.size(), 17, "harita seed'den yeniden kuruldu (3 perde, 17 düğüm)")
 	check(rm.nodes[0]["cleared"] and rm.nodes[1]["cleared"], "temizlenen düğümler geri geldi")
 	eq(rm.stat_villages_cleared, saved_cleared, "rekor: kurtarılan köy geri geldi")
 

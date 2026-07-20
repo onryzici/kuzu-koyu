@@ -26,6 +26,8 @@ extends Resource
 @export var max_days: int = 5                ## bu şafak sayısı dolunca köy düşer
 @export var kills_per_night: int = 1         ## gece başına kurban (boss: 2)
 @export var night_rule: int = Enums.NightRule.NEAREST  ## av düzeni (İLAN edilir)
+@export var cull_damage: int = 5             ## yanlış avlama can cezası (Kuraklık: 7)
+@export var modifiers: Array = []            ## köy kuralları ("silent"...) — İLAN edilir (§7.3)
 @export var trap_seat: int = -1              ## Tuzakçı kapanı (bu gece; -1 = yok)
 @export var night_events: Array = []         ## [{alive: Array[int], victim: int, day: int}]
 

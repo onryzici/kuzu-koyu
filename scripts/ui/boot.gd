@@ -7,6 +7,10 @@ extends Control
 
 const NEXT_SCENE := "res://scenes/run_map.tscn"
 
+## El yazısı font: hem uyarı metni (çobanın not defteri hissi) hem CODEZU wordmark'ı.
+## Eksik Türkçe glyph'lerde Godot fallback devreye girer (proje fontuyla aynı durum).
+const FONT_CASUAL: Font = preload("res://assets/fonts/CasualHuman.otf")
+
 ## Faz zamanlaması: [fade_in, bekleme, fade_out] (saniye).
 const PHASES := [
 	{"id": "warning", "in": 0.6, "hold": 5.0, "out": 0.5, "min_skip": 1.2},
@@ -37,40 +41,47 @@ func _ready() -> void:
 func _build_warning() -> void:
 	_warning_box = VBoxContainer.new()
 	_warning_box.add_theme_constant_override("separation", 22)
+	# TAM MERKEZ: dikeyde de ortalı — kutu içerik yüksekliğine göre her iki yöne büyür.
 	_warning_box.anchor_left = 0.5
 	_warning_box.anchor_right = 0.5
 	_warning_box.anchor_top = 0.5
 	_warning_box.anchor_bottom = 0.5
 	_warning_box.offset_left = -430
 	_warning_box.offset_right = 430
-	_warning_box.offset_top = -190
+	_warning_box.offset_top = 0
+	_warning_box.offset_bottom = 0
+	_warning_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(_warning_box)
 
 	var head := Label.new()
 	head.text = Loc.t("boot_health_title")
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_font_override("font", FONT_CASUAL)
+	head.add_theme_font_size_override("font_size", 32)
 	head.add_theme_color_override("font_color", Color("d8cfc2"))
 	_warning_box.add_child(head)
 
 	var body := Label.new()
 	body.text = Loc.t("boot_health_body")
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	body.add_theme_font_size_override("font_size", 17)
+	body.add_theme_font_override("font", FONT_CASUAL)
+	body.add_theme_font_size_override("font_size", 19)
 	body.add_theme_color_override("font_color", Color("9a938b"))
 	_warning_box.add_child(body)
 
 	var save_note := Label.new()
 	save_note.text = Loc.t("boot_save_note")
 	save_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	save_note.add_theme_font_size_override("font_size", 15)
+	save_note.add_theme_font_override("font", FONT_CASUAL)
+	save_note.add_theme_font_size_override("font_size", 16)
 	save_note.add_theme_color_override("font_color", Color("6f6a64"))
 	_warning_box.add_child(save_note)
 
 	var skip := Label.new()
 	skip.text = Loc.t("boot_press_key")
 	skip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	skip.add_theme_font_size_override("font_size", 13)
+	skip.add_theme_font_override("font", FONT_CASUAL)
+	skip.add_theme_font_size_override("font_size", 14)
 	skip.add_theme_color_override("font_color", Color("4a4642"))
 	_warning_box.add_child(skip)
 
@@ -146,19 +157,20 @@ func _draw_logo() -> void:
 		var ds := ts * sc
 		_logo.draw_texture_rect(tex, Rect2(c - ds * 0.5, ds), false)
 	else:
-		# Yalın wordmark: geniş harf aralıklı düz beyaz-kırık yazı, süs yok.
-		var fs := 64
-		var tracking := 14.0
+		# Yalın wordmark: el yazısı (CasualHuman) — imza gibi, süs yok.
+		var wf: Font = FONT_CASUAL
+		var fs := 76
+		var tracking := 8.0
 		var text := "CODEZU"
 		var total := 0.0
 		for ch in text:
-			total += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + tracking
+			total += wf.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + tracking
 		total -= tracking
 		var x := c.x - total * 0.5
 		var base_y := c.y + fs * 0.34
 		for ch in text:
-			_logo.draw_string(font, Vector2(x, base_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("e8e2d6"))
-			x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + tracking
+			_logo.draw_string(wf, Vector2(x, base_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("e8e2d6"))
+			x += wf.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + tracking
 
 	var foot := Loc.t("boot_copyright")
 	var fw := font.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x

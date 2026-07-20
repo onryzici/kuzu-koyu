@@ -14,11 +14,15 @@ var _quest_label: Label
 var _progress_label: Label
 var _day_label: Label          ## "Gün 2/5 · Sorgu ●●○"
 var _deaths_label: Label       ## "☠ Kurbanlar: #2, #5" — nirengi kanıtı
+var _mod_label: Label          ## köy modifier ilanı (Suskun Sürü / Kanlı Ay / Kuraklık)
+var _mod_strip: Dictionary = {}  ## _menu_strips içindeki modifier şeridi (referans)
 var _meta_label: Label
 var _village_label: Label
 var _score_label: Label
 var _day_btn: Button           ## Günü Bitir (gece) butonu
 var _log_btn: Button           ## İfade Defteri butonu (TAB)
+var _info_btn: Button          ## "?" Kurallar butonu (oyun içi bilgi — menüden kalktı)
+var _buyq_btn: Button          ## parayla +1 sorgu (yalnız seferde — para döngüde işlesin)
 var _banner: RibbonBanner  ## board sahibi; attach_banner ile bağlanır
 var _menu_strips: Array = []   ## sol menü banner'ları (kendi tasarım; intro'da kayar)
 var _comp_off := 0.0           ## kompozisyon paneli sağdan giriş kayması
@@ -139,6 +143,34 @@ func _build() -> void:
 	_add_btn_icon(_log_btn, _draw_log_icon)
 	_setup_hover(_log_btn)
 
+	# Bilgi butonu — defterin solunda küçük yuvarlak "?" (Kurallar overlay'i açar).
+	# Ana menüdeki Kurallar butonu kaldırıldı; oyun içi erişim noktası burası + ESC.
+	_info_btn = Button.new()
+	_info_btn.text = ""
+	_info_btn.position = Vector2(1318, 634)
+	_info_btn.size = Vector2(62, 62)
+	_info_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_info_btn.tooltip_text = Loc.t("menu_rules")
+	_style_night_button(_info_btn)
+	_info_btn.pressed.connect(func(): GameMenu.open_rules())
+	add_child(_info_btn)
+	_add_btn_icon(_info_btn, _draw_info_icon)
+	_setup_hover(_info_btn)
+
+	# Sorgu satın alma butonu — "?"nin solunda, amber para pulu (yalnız seferde).
+	# Fiyat her alışta tırmanır (GameState.question_price); etiket _draw'da.
+	_buyq_btn = Button.new()
+	_buyq_btn.text = ""
+	_buyq_btn.position = Vector2(1244, 634)
+	_buyq_btn.size = Vector2(62, 62)
+	_buyq_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_style_night_button(_buyq_btn)
+	_buyq_btn.pressed.connect(_on_buy_question)
+	_buyq_btn.visible = false
+	add_child(_buyq_btn)
+	_add_btn_icon(_buyq_btn, _draw_buyq_icon)
+	_setup_hover(_buyq_btn)
+
 	# Hasar flaşı (tam ekran kızıl, başta görünmez)
 	_dmg_flash = ColorRect.new()
 	_dmg_flash.color = Color(0.7, 0.0, 0.0, 0.0)
@@ -146,9 +178,10 @@ func _build() -> void:
 	_dmg_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_dmg_flash)
 
-	# Sonuç overlay'i (başta gizli)
+	# Sonuç overlay'i (başta gizli). Karartma güçlü — yazılar kartların üstünde
+	# okunaklı dursun (kullanıcı geri bildirimi: yazı/kart çakışması).
 	_overlay = ColorRect.new()
-	_overlay.color = Color(0.05, 0.04, 0.06, 0.82)
+	_overlay.color = Color(0.03, 0.02, 0.04, 0.90)
 	_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	_overlay.visible = false
@@ -156,6 +189,8 @@ func _build() -> void:
 
 	_overlay_label = Label.new()
 	_overlay_label.add_theme_font_size_override("font_size", 40)
+	_overlay_label.add_theme_constant_override("outline_size", 10)
+	_overlay_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_overlay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overlay_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_overlay_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -184,6 +219,8 @@ func _build_left_menu() -> void:
 	_village_label = _menu_label(15, Palette.IVORY.darkened(0.08))
 	_meta_label = _menu_label(15, Palette.COPPER.lightened(0.25))  # para/ascension
 	_score_label = _menu_label(16, Color("8fe0a0"))
+	# Modifier ilanı (adalet §7.3: köy kuralı BAŞTAN duyurulur) — amber, dikkat çekici.
+	_mod_label = _menu_label(15, Color("f0b53c"))
 	# Aralarında belirgin boşluk (dip dibe olmasın): gap ~20px.
 	_menu_strips = [
 		{"label": _quest_label, "y": 14.0, "w": 430.0, "h": 56.0, "off": -560.0, "visible": true},
@@ -194,6 +231,8 @@ func _build_left_menu() -> void:
 		{"label": _meta_label, "y": 300.0, "w": 330.0, "h": 48.0, "off": -560.0, "visible": true},
 		{"label": _score_label, "y": 368.0, "w": 290.0, "h": 48.0, "off": -560.0, "visible": true},
 	]
+	_mod_strip = {"label": _mod_label, "y": 436.0, "w": 340.0, "h": 48.0, "off": -560.0, "visible": false}
+	_menu_strips.append(_mod_strip)
 	_layout_menu()
 
 
@@ -296,10 +335,14 @@ func play_intro() -> void:
 	var ex0 := _execute_btn.position.x
 	var dx0 := _day_btn.position.x
 	var lg0 := _log_btn.position.x
+	var in0 := _info_btn.position.x
+	var bq0 := _buyq_btn.position.x
 	_legend_off = 560.0
 	_execute_btn.position.x = ex0 + 560.0
 	_day_btn.position.x = dx0 + 560.0
 	_log_btn.position.x = lg0 + 560.0
+	_info_btn.position.x = in0 + 560.0
+	_buyq_btn.position.x = bq0 + 560.0
 	var lt := create_tween()
 	lt.tween_interval(0.22)
 	lt.tween_method(func(v: float):
@@ -307,6 +350,8 @@ func play_intro() -> void:
 		_execute_btn.position.x = ex0 + v
 		_day_btn.position.x = dx0 + v
 		_log_btn.position.x = lg0 + v
+		_info_btn.position.x = in0 + v
+		_buyq_btn.position.x = bq0 + v
 		queue_redraw(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 	# Can küresi — soldan.
@@ -390,6 +435,40 @@ func _draw_log_icon(ic: Control) -> void:
 	# Satırlar (yazı hissi).
 	for r in [-5.0, 0.0, 5.0]:
 		ic.draw_line(c + Vector2(-5.5, r), c + Vector2(5.5, r), Color(ink.r, ink.g, ink.b, 0.75), 1.5)
+
+
+## Sorgu satın alma ikonu: amber para pulu + artı (köy içinde para harcama noktası).
+func _draw_buyq_icon(ic: Control) -> void:
+	var gold := Color("ffd479")
+	var c := ic.size * 0.5 + Vector2(0, -2.0)
+	ic.draw_circle(c, 11.0, Color(0.24, 0.16, 0.05))
+	ic.draw_arc(c, 11.0, 0, TAU, 26, gold, 2.2, true)
+	ic.draw_arc(c, 7.4, 0, TAU, 22, Color(gold.r, gold.g, gold.b, 0.55), 1.2, true)
+	# Artı: sağ-alt köşede küçük yeşilimsi rozet ("+1 sorgu").
+	var pc := c + Vector2(11.0, 11.0)
+	ic.draw_circle(pc, 7.0, Color(0.10, 0.16, 0.10))
+	ic.draw_arc(pc, 7.0, 0, TAU, 18, Color("8fe0a0"), 1.6, true)
+	ic.draw_line(pc + Vector2(-3.4, 0), pc + Vector2(3.4, 0), Color("8fe0a0"), 2.0)
+	ic.draw_line(pc + Vector2(0, -3.4), pc + Vector2(0, 3.4), Color("8fe0a0"), 2.0)
+
+
+func _on_buy_question() -> void:
+	var price := GameState.question_price()
+	if GameState.buy_question():
+		AudioManager.play_deal()
+		flash_banner(Loc.t("buyq_ok") % price, Color("8fe0a0"))
+	else:
+		flash_banner(Loc.t("buyq_poor") % price, Palette.BLOOD)
+	update_all()
+
+
+## Bilgi butonu ikonu: soru işareti (yay + kısa sap + nokta) — kurallara erişim.
+func _draw_info_icon(ic: Control) -> void:
+	var col := Color("e8dcc0")
+	var c := ic.size * 0.5
+	ic.draw_arc(c + Vector2(0, -5.0), 7.5, -PI * 0.9, PI * 0.55, 20, col, 3.0, true)
+	ic.draw_line(c + Vector2(2.3, 0.2), c + Vector2(0, 5.5), col, 3.0)
+	ic.draw_circle(c + Vector2(0, 11.0), 2.4, col)
 
 
 ## Gece butonu ikonu: dolgun HİLAL (gerçek iki-çember kesişimiyle hesaplanmış
@@ -505,6 +584,7 @@ func _add_label(pos: Vector2, font_size: int, color: Color) -> Label:
 
 func _connect_events() -> void:
 	EventBus.character_questioned.connect(func(_s): update_all())
+	EventBus.question_bought.connect(func(_l, _c): update_all())
 	EventBus.day_started.connect(func(_d): update_all())
 	EventBus.night_kill.connect(func(_s): update_all())
 	EventBus.card_executed.connect(_on_executed)
@@ -547,6 +627,18 @@ func update_all() -> void:
 		# Bağımsız modda ascension/para satırı gereksiz — gizle (istif kendini toplar).
 		_menu_strips[5]["visible"] = false
 	_score_label.text = Loc.t("score_label") % GameState.score
+	# Sorgu satın alma yalnız seferde (para RunManager'da) ve köy aktifken.
+	if _buyq_btn != null:
+		_buyq_btn.visible = RunManager.has_active_run() and GameState.is_active()
+		_buyq_btn.tooltip_text = Loc.t("buyq_tip") % GameState.question_price()
+	# Köy modifier ilanı (varsa) — kural baştan ve her an görünür (adalet §7.3).
+	var mods: Array = v.modifiers
+	_mod_strip["visible"] = not mods.is_empty()
+	if not mods.is_empty():
+		var mod_lines: Array = []
+		for m in mods:
+			mod_lines.append(Loc.t("mod_%s" % m))
+		_mod_label.text = "⚠ " + "  ·  ".join(mod_lines)
 	_layout_menu()
 	# Kompozisyon rozetleri _draw'da (sayılar oradan GameState.village'dan okunur).
 	if not _hp_animating:
@@ -602,20 +694,24 @@ func _draw() -> void:
 		# VARLIĞI her zaman ilan edilir (adalet §7.3 — kompozisyon gibi); içeriği
 		# ancak Müneccim/fal/tümdengelimle çözülünce görünür.
 		if v.omen_type != Enums.OmenType.NONE:
-			var ow := 360.0
+			var known := v.known_omen != Enums.OmenType.NONE
+			var l1 := ("◉ " + Omen.short_label(v.known_omen)) if known else Loc.t("omen_unknown")
+			var l2 := Omen.hint(v.known_omen) if known else Loc.t("omen_unknown_hint")
+			# Banner genişliği METNE göre: uzun ipuçları taşmasın (kullanıcı bug'ı).
+			var w1 := font.get_string_size(l1, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			var w2 := font.get_string_size(l2, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+			var ow := maxf(360.0, maxf(w1, w2) + 84.0)
 			_draw_banner(size.x - ow + 6 + cox, 90, ow + 4, 52, true)
-			if v.known_omen != Enums.OmenType.NONE:
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), "◉ " + Omen.short_label(v.known_omen),
+			if known:
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), l1,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Palette.SAFFRON)
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), Omen.hint(v.known_omen),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
 			else:
 				# Çözülmemiş: soluk, nabız gibi hafif yanıp sönen "???".
 				var oa := 0.55 + 0.25 * sin(_t * 2.2)
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), Loc.t("omen_unknown"),
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), l1,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(Palette.SAFFRON.r, Palette.SAFFRON.g, Palette.SAFFRON.b, oa))
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), Loc.t("omen_unknown_hint"),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
+			draw_string(font, Vector2(size.x - ow + 60 + cox, 132), l2,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
 
 	# Sağ-alt yuvarlak butonların çerçeveleri: görünür GRİ-SİYAH halka + gölge
 	# (dalgalı siyah diskler koyu zeminde kayboluyordu — kullanıcı geri bildirimi).
@@ -634,6 +730,19 @@ func _draw() -> void:
 	if _log_btn != null:
 		var lc := _log_btn.position + _log_btn.size * 0.5
 		_draw_button_frame(lc, 31.0, ring_gray, _log_btn.is_hovered())
+	if _info_btn != null:
+		var ic := _info_btn.position + _info_btn.size * 0.5
+		_draw_button_frame(ic, 31.0, ring_gray, _info_btn.is_hovered())
+	if _buyq_btn != null and _buyq_btn.visible:
+		var qc := _buyq_btn.position + _buyq_btn.size * 0.5
+		_draw_button_frame(qc, 31.0, ring_gray, _buyq_btn.is_hovered())
+		# Fiyat etiketi butonun altında (konturlu — tırmanan fiyat hep görünür).
+		if font != null:
+			var ptxt := "%d ₿" % GameState.question_price()
+			var pts := font.get_string_size(ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+			var pp := Vector2(qc.x - pts.x * 0.5, _buyq_btn.position.y + _buyq_btn.size.y + 16.0)
+			draw_string_outline(font, pp, ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.85))
+			draw_string(font, pp, ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("ffd479"))
 
 	var gc := Vector2(90.0 + _globe_off, size.y - 96.0) + _globe_shake
 	# Düşük can uyarısı: küre çevresinde nabız gibi atan kızıl halkalar.
@@ -782,16 +891,24 @@ func set_night_dim(a: float) -> void:
 
 
 func _on_won(score: int) -> void:
-	# Önce son kurtun açılışı + zoom + bölünme sinematiği görünsün, SONRA overlay.
-	await get_tree().create_timer(2.5).timeout
+	# Sefer modunda overlay YOK: board sinematik bitiminde haritaya/sonuca geçiyor;
+	# overlay o geçişin üstüne binip kart/yazı karmaşası yaratıyordu (kullanıcı
+	# geri bildirimi). Yalnız bağımsız modda ve sinematik TAMAMEN bitince göster.
+	if RunManager.has_active_run():
+		return
+	await get_tree().create_timer(3.2).timeout
+	if not is_inside_tree():
+		return
 	_overlay.visible = true
 	_overlay_label.text = Loc.t("overlay_won") % score
 	_overlay_label.add_theme_color_override("font_color", Palette.SAFFRON)
 
 
 func _on_lost(reason: String) -> void:
-	# Board'un kaybediş sinematiği (~3.2 sn) oynasın; sefer modunda bu sırada
-	# sonuç ekranına geçilir (overlay hiç görünmez — istenen bu).
+	# Sefer modunda overlay YOK (board sonuç ekranına geçer); bağımsız modda
+	# kaybediş sinematiği (~3.2 sn) bittikten sonra göster.
+	if RunManager.has_active_run():
+		return
 	await get_tree().create_timer(3.4).timeout
 	if not is_inside_tree():
 		return

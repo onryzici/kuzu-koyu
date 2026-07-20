@@ -67,6 +67,44 @@ const T := {
 	"boss_hungry": {"tr": "AÇ ALFA", "en": "HUNGRY ALPHA"},
 	"boss_shadow": {"tr": "GÖLGE SÜRÜSÜ", "en": "SHADOW PACK"},
 	"boss_impatient": {"tr": "SABIRSIZ ALFA", "en": "RESTLESS ALPHA"},
+	"miniboss_howl": {"tr": "İLK ULUMA", "en": "FIRST HOWL"},
+	"miniboss_shadow": {"tr": "PUSUDAKİ GÖLGE", "en": "LURKING SHADOW"},
+
+	# ---- Perdeler / elit köy / rol draft'ı / Sonsuz Sürü ----
+	"act_line": {"tr": "Perde %d — %s", "en": "Act %d — %s"},
+	"act_meadow": {"tr": "Yayla", "en": "The Meadow"},
+	"act_valley": {"tr": "Vadi", "en": "The Valley"},
+	"act_forest": {"tr": "Kara Orman", "en": "The Dark Forest"},
+	"act_endless": {"tr": "Sonsuz Sürü", "en": "The Endless Flock"},
+	"btn_enter_elite": {"tr": "ELİT Köye Gir (Enter)", "en": "Enter the ELITE Village (Enter)"},
+	"btn_skip_elite": {"tr": "Elit köyü atla (ödülsüz)", "en": "Skip the elite village (no reward)"},
+	"elite_hint": {
+		"tr": "ELİT KÖY: daha zorlu — ama kazanana bedava muska.",
+		"en": "ELITE VILLAGE: harder — but the winner earns a free charm.",
+	},
+	"elite_reward_line": {"tr": "Elit ödülü: %s", "en": "Elite reward: %s"},
+	"draft_title": {"tr": "SÜRÜYE YENİ KAN", "en": "NEW BLOOD FOR THE FLOCK"},
+	"draft_sub": {
+		"tr": "Bir rol seç — sefer destene katılsın; sonraki köylerde görünebilir.",
+		"en": "Pick a role to join your journey deck; it may appear in later villages.",
+	},
+	"draft_skip": {"tr": "Geç (rol ekleme)", "en": "Pass (add none)"},
+	"endless_btn": {"tr": "SONSUZ SÜRÜ — devam et", "en": "ENDLESS FLOCK — keep going"},
+
+	# ---- Köye giriş kartı (village_board intro) ----
+	"intro_elite_badge": {
+		"tr": "ELİT KÖY — kazanana bedava muska",
+		"en": "ELITE VILLAGE — a free charm for the winner",
+	},
+	"intro_comp": {"tr": "%d koyun · %d parya · %d kurt", "en": "%d sheep · %d outcast · %d wolves"},
+	"intro_kills": {"tr": " · gecede %d av", "en": " · %d kills a night"},
+	"intro_foggy": {"tr": " · SİSLİ GECE (kurt en uzağı avlar)", "en": " · FOGGY NIGHT (the wolf hunts the farthest)"},
+	"intro_skip": {"tr": "tık ya da tuş — geç", "en": "click or press a key — skip"},
+
+	# ---- Köy modifier'ları (İLAN edilir — HUD sol menü) ----
+	"mod_silent": {"tr": "SUSKUN SÜRÜ: herkes yalnız 1 ifade verir", "en": "SILENT FLOCK: everyone gives only 1 statement"},
+	"mod_blood_moon": {"tr": "KANLI AY: gecede 2 av · günde +1 sorgu", "en": "BLOOD MOON: 2 kills a night · +1 question a day"},
+	"mod_drought": {"tr": "KURAKLIK: yanlış avlama −7 can", "en": "DROUGHT: a wrong cull costs 7 health"},
 
 	# ---- Dükkân (shop) ----
 	"shop_title": {"tr": "DÜKKÂN", "en": "THE SHOP"},
@@ -79,6 +117,48 @@ const T := {
 	"shop_buy": {"tr": "Al  ·  %d ₿", "en": "Buy  ·  %d ₿"},
 	"shop_owned_label": {"tr": "Muskaların: ", "en": "Your charms: "},
 	"shop_none": {"tr": "yok", "en": "none"},
+	"shop_charms_title": {
+		"tr": "MUSKALAR — sefer boyu kalıcı",
+		"en": "CHARMS — last the whole journey",
+	},
+	"shop_boons_title": {
+		"tr": "AZIKLAR — yalnız SONRAKİ köyde geçerli",
+		"en": "PROVISIONS — for the NEXT village only",
+	},
+	"shop_reroll": {"tr": "Yeniden Karıştır · %d ₿", "en": "Reshuffle · %d ₿"},
+	"shop_bought": {"tr": "ALINDI", "en": "BOUGHT"},
+	"shop_pending_boons": {"tr": "Azığın (sonraki köy): ", "en": "Provisions (next village): "},
+	"shop_draft_name": {"tr": "YENİ KAN", "en": "NEW BLOOD"},
+	"shop_draft_desc": {
+		"tr": "Sefer destene yeni bir rol kat — 3 aday arasından seç.",
+		"en": "Add a new role to your journey deck — pick from 3 candidates.",
+	},
+	"shop_draft_empty": {
+		"tr": "Katılabilecek rol kalmadı — deste dolu.",
+		"en": "No roles left to join — the deck is full.",
+	},
+
+	# ---- Azıklar (RunManager.BOONS — boon_name/desc yardımcıları çözer) ----
+	"boon_extra_q_name": {"tr": "Tuz Torbası", "en": "Salt Pouch"},
+	"boon_extra_q_desc": {
+		"tr": "Sonraki köyde her gün +1 sorgu hakkı.",
+		"en": "+1 question every day in the next village.",
+	},
+	"boon_extra_day_name": {"tr": "Kandil Yağı", "en": "Lamp Oil"},
+	"boon_extra_day_desc": {
+		"tr": "Sonraki köyde +1 şafak (fazladan bir gün).",
+		"en": "+1 dawn in the next village (an extra day).",
+	},
+	"boon_reveal_omen_name": {"tr": "Yıldız Haritası", "en": "Star Chart"},
+	"boon_reveal_omen_desc": {
+		"tr": "Sonraki köyde Gizli Kural baştan açık.",
+		"en": "The Hidden Rule is known from the start in the next village.",
+	},
+
+	# ---- Köy içi sorgu satın alma (HUD para pulu) ----
+	"buyq_tip": {"tr": "Sorgu satın al — %d ₿ (fiyat her alışta artar)", "en": "Buy a question — %d ₿ (price rises each time)"},
+	"buyq_ok": {"tr": "+1 sorgu hakkı (−%d ₿)", "en": "+1 question (−%d ₿)"},
+	"buyq_poor": {"tr": "Para yetmiyor — %d ₿ gerek", "en": "Not enough coin — need %d ₿"},
 
 	# ---- Muskalar (RunManager.PASSIVES — passive_name/desc yardımcıları çözer) ----
 	"passive_zirh_name": {"tr": "Zırh", "en": "Armor"},
@@ -135,6 +215,16 @@ const T := {
 	"passive_sadaka_desc": {
 		"tr": "Dükkân fiyatları %25 ucuz.",
 		"en": "Shop prices 25% cheaper.",
+	},
+	"passive_kanli_name": {"tr": "Kanlı Tılsım", "en": "Blood Talisman"},
+	"passive_kanli_desc": {
+		"tr": "LANETLİ: her gün +1 sorgu hakkı — ama maksimum can −2.",
+		"en": "CURSED: +1 question every day — but max health −2.",
+	},
+	"passive_karakese_name": {"tr": "Kara Kese", "en": "Black Purse"},
+	"passive_karakese_desc": {
+		"tr": "LANETLİ: köy ödülü +25 para — ama her köye 1 can eksik başlarsın.",
+		"en": "CURSED: +25 coins per village won — but you start each village 1 health short.",
 	},
 
 	# ---- Olay ekranı (event) ----
@@ -373,17 +463,20 @@ const T := {
 	},
 
 	# ---- Boot (açılış sekansı) ----
-	"boot_health_title": {"tr": "SAĞLIK UYARISI", "en": "HEALTH WARNING"},
+	# NOT: Uyarı ekranı el yazısı font (CasualHuman) kullanır ve ğ/ı/ş glyph'leri
+	# fontta yok — fallback karışık görünüyor. Bu yüzden TR uyarı metinleri BİLEREK
+	# ASCII yazılır (sadece bu 4 anahtar; oyun içi metinler normal Türkçe).
+	"boot_health_title": {"tr": "SAGLIK UYARISI", "en": "HEALTH WARNING"},
 	"boot_health_body": {
-		"tr": "Bu oyun yanıp sönen görüntüler ve ani ışık değişimleri içerebilir.\nNadir de olsa bu görüntüler, ışığa duyarlı kişilerde epilepsi nöbetlerini tetikleyebilir.\nBaş dönmesi, görme bozukluğu ya da rahatsızlık hissederseniz oyunu hemen bırakın\nve bir hekime danışın.",
+		"tr": "Bu oyun yanip sonen goruntuler ve ani isik degisimleri icerebilir.\nNadir de olsa bu goruntuler, isiga duyarli kisilerde epilepsi nobetlerini tetikleyebilir.\nBas donmesi, gorme bozuklugu ya da rahatsizlik hissederseniz oyunu hemen birakin\nve bir hekime danisin.",
 		"en": "This game may contain flashing images and sudden changes of light.\nIn rare cases such images can trigger epileptic seizures in light-sensitive people.\nIf you feel dizziness, impaired vision or discomfort, stop playing at once\nand consult a physician.",
 	},
 	"boot_save_note": {
-		"tr": "Bu oyun ilerlemenizi otomatik olarak kaydeder.\nKayıt sırasında uygulamayı kapatmayın.",
+		"tr": "Bu oyun ilerlemenizi otomatik olarak kaydeder.\nKayit sirasinda uygulamayi kapatmayin.",
 		"en": "This game saves your progress automatically.\nDo not close the application while it is saving.",
 	},
 	"boot_press_key": {
-		"tr": "devam etmek için bir tuşa basın",
+		"tr": "devam etmek icin bir tusa basin",
 		"en": "press any key to continue",
 	},
 	"boot_copyright": {

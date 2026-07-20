@@ -126,6 +126,24 @@ func _build() -> void:
 	add_child(copy_btn)
 	ScreenFx.slide_in(copy_btn, 0.65 + lines.size() * 0.18)
 
+	# SONSUZ SÜRÜ: final boss yenildiyse zincir sürdürülebilir (Günün Seferi hariç).
+	# Skor/para birikir; kaybedene dek her köy biraz daha sert (RunManager._endless_node).
+	if RunManager.last_outcome == Enums.RunOutcome.RUN_WON and not RunManager.is_daily:
+		var endless_btn := Button.new()
+		endless_btn.text = Loc.t("endless_btn")
+		endless_btn.anchor_left = 0.5
+		endless_btn.anchor_right = 0.5
+		endless_btn.offset_left = -180
+		endless_btn.offset_right = 180
+		endless_btn.offset_top = 696
+		endless_btn.offset_bottom = 748
+		ScreenFx.style_button(endless_btn, Color(0.24, 0.07, 0.10, 0.97), 18)
+		endless_btn.pressed.connect(func():
+			RunManager.continue_endless()
+			Fader.change_scene("res://scenes/run_map.tscn"))
+		add_child(endless_btn)
+		ScreenFx.slide_in(endless_btn, 0.8 + lines.size() * 0.18)
+
 
 func _continue() -> void:
 	Fader.change_scene("res://scenes/run_map.tscn")

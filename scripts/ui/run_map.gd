@@ -6,6 +6,14 @@ extends Control
 
 const NODE_R := 26.0
 
+## Ana menü görseli: koyun postlu kurt SAĞ yarıda, pentagram ortada — menü/başlık
+## SOL yarıya yerleşir (görsel kompozisyonla sözleşme; değişirse yerleşimi güncelle).
+const MENU_BG: Texture2D = preload("res://assets/art/bg/menu_bg.png")
+const MAP_BG: Texture2D = preload("res://assets/art/bg/run_map_bg.png")
+## Başlık fontu (Revoback, medieval-tall). Yalnız oyun adında — Türkçe gövde
+## metinlerinde glyph riski var; onlar proje fontunda (Aminute) kalır.
+const FONT_TITLE: Font = preload("res://assets/fonts/Revoback.ttf")
+
 var _fx: ScreenFx
 var _map_layer: Control        ## düğüm zinciri bu katmana çizilir (ScreenFx'in üstünde)
 var _title: Label
@@ -20,14 +28,22 @@ var _life_layer: Control       ## yaşayan menü: yanıp sönen kurt gözleri
 var _eyes: Array = []          ## aktif göz çiftleri: {pos, t, dur, gap}
 var _eye_timer := 0.0
 var _life_rng := RandomNumberGenerator.new()
-var _rules_btn: Button
-var _codex_btn: Button
 var _settings_btn: Button
-var _btn_row: HBoxContainer    ## ikincil buton sırası (aktif seferde aşağı iner)
+var _btn_row: BoxContainer     ## ikincil butonlar (menüde dikey sütun, seferde yatay sıra)
 var _records_panel: PanelContainer
+var _skip_btn: Button          ## elit köyü atla (yalnız ELITE düğümünde görünür)
+var _draft_layer: Control      ## rol draft'ı overlay'i (köy zaferi sonrası)
 var _pending_ascension := 0
+var _howl_t := 9.0             ## menüde uzak kurt uluması sayacı
 var _t := 0.0
 var _map_intro := 0.0    ## harita giriş animasyonu saati (düğümler sırayla belirir)
+
+## Menü görselindeki pentagram mumlarının konumları (bg uzayı 3840×2160) — _draw_life
+## menüde bunlara titrek kandil parıltısı çizer (görselle sözleşme).
+const MENU_CANDLES := [
+	Vector2(2093, 860), Vector2(1786, 1046), Vector2(2400, 1023),
+	Vector2(1920, 1302), Vector2(2285, 1302), Vector2(2093, 1094),
+]
 
 
 func _ready() -> void:
@@ -62,6 +78,14 @@ func _process(delta: float) -> void:
 		_life_layer.queue_redraw()
 	if _map_layer != null and RunManager.has_active_run():
 		_map_layer.queue_redraw()  # aktif düğüm nabzı + giriş animasyonu
+	# MENÜ CİLASI: başlık nefes alır + ara ara uzaktan kurt ulur (yalnız menüde).
+	if not RunManager.has_active_run():
+		if _title != null:
+			_title.modulate.a = 0.90 + 0.10 * sin(_t * 1.3)
+		_howl_t -= delta
+		if _howl_t <= 0.0:
+			_howl_t = _life_rng.randf_range(24.0, 42.0)
+			AudioManager.sfx("howl", -16.0, _life_rng.randf_range(0.85, 1.0))
 
 
 func _ensure_save_loaded() -> void:
@@ -72,9 +96,8 @@ func _ensure_save_loaded() -> void:
 
 func _build() -> void:
 	_fx = ScreenFx.new()
-	# Sefer haritası: loş orman açıklığı (referans: Demon Bluff harita ekranı).
-	# Görsel zaten karanlık — tint'i açık tut, üst kaplamayı hafiflet.
-	_fx.bg_texture = preload("res://assets/art/bg/run_map_bg.png")
+	# Doku/tint _refresh'te moda göre atanır: menüde kurt görseli, seferde orman.
+	_fx.bg_texture = MAP_BG
 	_fx.tint = Color(0.88, 0.90, 0.92)
 	_fx.overlay = Color(0.02, 0.03, 0.04, 0.22)
 	add_child(_fx)
@@ -138,7 +161,24 @@ func _build() -> void:
 	_action_btn.offset_bottom = 634
 	ScreenFx.style_button(_action_btn, Palette.CRIMSON.darkened(0.15), 24)
 	_action_btn.pressed.connect(_on_action)
+	_action_btn.mouse_entered.connect(func(): AudioManager.sfx("mark", -14.0, 1.3))
 	add_child(_action_btn)
+
+	# Elit köyü atla (yalnız ELITE düğümünde; elit her zaman İSTEĞE BAĞLI).
+	_skip_btn = Button.new()
+	_skip_btn.anchor_left = 0.5
+	_skip_btn.anchor_right = 0.5
+	_skip_btn.offset_left = 190
+	_skip_btn.offset_right = 440
+	_skip_btn.offset_top = 706
+	_skip_btn.offset_bottom = 754
+	ScreenFx.style_button(_skip_btn, Color(0.10, 0.06, 0.08, 0.96), 16)
+	_skip_btn.text = Loc.t("btn_skip_elite")
+	_skip_btn.visible = false
+	_skip_btn.pressed.connect(func():
+		RunManager.skip_elite()
+		_refresh())
+	add_child(_skip_btn)
 
 	# Telif satırı (sol-alt, silik) — stüdyo kimliği her ekranda küçükçe dursun.
 	var copyright := Label.new()
@@ -149,22 +189,23 @@ func _build() -> void:
 	copyright.position = Vector2(16, -30)
 	add_child(copyright)
 
-	# İkincil sıra: zorluk + kurallar + karakterler + ayarlar.
-	_btn_row = HBoxContainer.new()
+	# İkincil butonlar: zorluk + kurallar + karakterler + ayarlar.
+	# BoxContainer: menüde dikey sütun (sol yarı), aktif seferde yatay sıra (_refresh).
+	_btn_row = BoxContainer.new()
 	_btn_row.add_theme_constant_override("separation", 18)
 	_btn_row.anchor_left = 0.5
 	_btn_row.anchor_right = 0.5
-	# 5 buton × 190 + 4 aralık × 18 = 1022 → yarı 511 (sabit; resized-yarışı olmasın).
-	_btn_row.offset_left = -511
-	_btn_row.offset_right = 511
+	# 3 buton × 190 + 2 aralık × 18 = 606 → yarı 303 (sabit; resized-yarışı olmasın).
+	_btn_row.offset_left = -303
+	_btn_row.offset_right = 303
 	_btn_row.offset_top = 660
 	_btn_row.offset_bottom = 710
 	add_child(_btn_row)
 
+	# Sadeleştirilmiş menü (kullanıcı kararı): Kurallar oyun içi "?" butonunda ve
+	# ESC menüsünde; Karakterler Ayarlar ekranından açılır. Menü kalabalık olmasın.
 	_asc_btn = _secondary_btn(_btn_row, Loc.t("map_asc_btn") % 1, _cycle_ascension)
 	_daily_btn = _secondary_btn(_btn_row, Loc.t("btn_daily"), _start_daily)
-	_rules_btn = _secondary_btn(_btn_row, Loc.t("menu_rules"), func(): Fader.change_scene("res://scenes/rules.tscn"))
-	_codex_btn = _secondary_btn(_btn_row, Loc.t("menu_chars"), func(): Fader.change_scene("res://scenes/codex.tscn"))
 	_settings_btn = _secondary_btn(_btn_row, Loc.t("menu_settings"), func(): Fader.change_scene("res://scenes/settings.tscn"))
 
 	# Tohumlu sefer: arkadaşının kopyaladığı TOHUM ile birebir aynı seferi oyna
@@ -202,8 +243,11 @@ func _build() -> void:
 	sb.shadow_offset = Vector2(6, 7)
 	sb.shadow_size = 1
 	_records_panel.add_theme_stylebox_override("panel", sb)
+	# Yatay ortalama: anchor noktası etrafında iki yöne büyü (resized-hack'i yerine
+	# yerleşik grow — script döngüsü yok, anchor değişse de çalışır).
 	_records_panel.anchor_left = 0.5
 	_records_panel.anchor_right = 0.5
+	_records_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_records_panel.offset_top = 760
 	_records_panel.offset_bottom = 812
 	add_child(_records_panel)
@@ -212,13 +256,22 @@ func _build() -> void:
 	rec.add_theme_font_size_override("font_size", 15)
 	rec.add_theme_color_override("font_color", Palette.COPPER.lightened(0.3))
 	_records_panel.add_child(rec)
-	_records_panel.resized.connect(func():
-		_records_panel.offset_left = -_records_panel.size.x * 0.5
-		_records_panel.offset_right = _records_panel.size.x * 0.5)
 
 
 ## Çalıdaki göz çifti: yumuşak amber parıltı + bebek; ortada kısa göz kırpma.
+## Menüde ek olarak pentagram mumlarına titrek kandil parıltısı çizilir.
 func _draw_life() -> void:
+	if not RunManager.has_active_run():
+		# Kurt görselindeki 5+1 mum: bg-cover dönüşümüyle ekrana sabitlenir.
+		var ts := Vector2(MENU_BG.get_width(), MENU_BG.get_height())
+		var sc := maxf(_life_layer.size.x / ts.x, _life_layer.size.y / ts.y)
+		var off := (_life_layer.size - ts * sc) * 0.5
+		for ci in range(MENU_CANDLES.size()):
+			var cp: Vector2 = off + (MENU_CANDLES[ci] as Vector2) * sc
+			var fl := 0.70 + 0.30 * sin(_t * (5.8 + float(ci) * 0.7) + float(ci) * 2.1) \
+					* sin(_t * 3.3 + float(ci) * 1.4)
+			for gl in [[42.0, 0.05], [21.0, 0.10], [9.0, 0.16]]:
+				_life_layer.draw_circle(cp, gl[0] * fl, Color(1.0, 0.50, 0.16, gl[1] * fl))
 	for e in _eyes:
 		var prog: float = e.t / e.dur
 		var a: float = sin(PI * prog)
@@ -238,6 +291,7 @@ func _secondary_btn(parent: Node, text: String, cb: Callable) -> Button:
 	b.custom_minimum_size = Vector2(190, 48)
 	ScreenFx.style_button(b, Color(0.10, 0.06, 0.08, 0.96), 18)
 	b.pressed.connect(cb)
+	b.mouse_entered.connect(func(): AudioManager.sfx("mark", -14.0, 1.3))  # hover tıkı
 	parent.add_child(b)
 	return b
 
@@ -257,8 +311,7 @@ func _play_intro() -> void:
 
 func _refresh() -> void:
 	var active := RunManager.has_active_run()
-	_fx.show_eye = not active           # ana menüde büyük göz; haritada sade
-	_fx.eye_center = Vector2(0.5, 0.24)
+	_fx.show_eye = false                # menü görselinin kendi pentagramı var; göz çizme
 	_map_intro = 0.0                    # harita her görünüşünde giriş animasyonu
 	_map_layer.queue_redraw()
 	_asc_btn.visible = not active
@@ -268,6 +321,26 @@ func _refresh() -> void:
 		_seed_row.visible = not active
 
 	if active:
+		# SEFER HARİTASI: orman görseli, tam genişlik ortalı yerleşim.
+		_fx.bg_texture = MAP_BG
+		_fx.tint = Color(0.88, 0.90, 0.92)
+		_fx.overlay = Color(0.02, 0.03, 0.04, 0.22)
+		_title.remove_theme_font_override("font")
+		_title.add_theme_font_size_override("font_size", 52)
+		for l: Control in [_title, _subtitle, _info]:
+			l.anchor_left = 0.0
+			l.anchor_right = 1.0
+		_action_btn.anchor_left = 0.5
+		_action_btn.anchor_right = 0.5
+		_action_btn.offset_left = -170
+		_action_btn.offset_right = 170
+		_btn_row.vertical = false
+		_btn_row.add_theme_constant_override("separation", 18)
+		_btn_row.anchor_left = 0.5
+		_btn_row.anchor_right = 0.5
+		# 3 buton × 190 + 2 aralık × 18 = 606 → yarı 303.
+		_btn_row.offset_left = -303
+		_btn_row.offset_right = 303
 		_title.offset_top = 60
 		_title.offset_bottom = 128
 		_subtitle.offset_top = 132
@@ -279,17 +352,28 @@ func _refresh() -> void:
 		# İkincil sıra ana butonun ALTINA insin (üst üste binmesin — bug fix).
 		_btn_row.offset_top = 786
 		_btn_row.offset_bottom = 836
+		_title.modulate.a = 1.0  # menü nefes animasyonundan dönerken sıfırla
 		_title.text = Loc.t("map_title_daily") if RunManager.is_daily else Loc.t("map_title_run")
 		_subtitle.text = (Loc.t("map_daily_sub") if RunManager.is_daily
 			else Loc.t("map_asc_sub") % (RunManager.ascension + 1))
 		var boss := RunManager.is_current_boss()
 		var ntype: int = RunManager.current_node().get("type", Enums.NodeType.VILLAGE)
+		# Perde satırı: hangi perdedeyiz (Yayla/Vadi/Kara Orman/Sonsuz).
+		var act_i: int = int(RunManager.current_node().get("act", 1))
+		var act_keys := ["act_meadow", "act_valley", "act_forest", "act_endless"]
+		_info.text = Loc.t("act_line") % [act_i, Loc.t(act_keys[clampi(act_i - 1, 0, 3)])]
 		# boss_name config'te Loc anahtarı taşır — gösterim anında çözülür.
-		_info.text = Loc.t("map_stop_line") % [
+		_info.text += "\n" + Loc.t("map_stop_line") % [
 			RunManager.current_index + 1, RunManager.nodes.size(),
 			"  (%s)" % Loc.t(String(RunManager.current_village_config().get("boss_name", "boss_default"))) if boss else "",
 			RunManager.coins, RunManager.total_score,
 		]
+		if ntype == Enums.NodeType.ELITE:
+			_info.text += "\n" + Loc.t("elite_hint")
+		# Elit ödülü kazanıldıysa bir kez duyur (tüketilir).
+		if RunManager.last_elite_reward != &"":
+			_info.text += "\n" + Loc.t("elite_reward_line") % RunManager.passive_name(RunManager.last_elite_reward)
+			RunManager.last_elite_reward = &""
 		var pnames: Array = []
 		for p in RunManager.owned_passives:
 			pnames.append(RunManager.passive_name(p))
@@ -300,19 +384,57 @@ func _refresh() -> void:
 				_action_btn.text = Loc.t("btn_enter_shop")
 			Enums.NodeType.EVENT:
 				_action_btn.text = Loc.t("btn_enter_event")
+			Enums.NodeType.ELITE:
+				_action_btn.text = Loc.t("btn_enter_elite")
 			_:
 				_action_btn.text = Loc.t("btn_enter_boss") if boss else Loc.t("btn_enter_flock")
+		_skip_btn.visible = ntype == Enums.NodeType.ELITE
+		# Rol draft'ı normalde köy tahtasında sunulur; eski kayıt yedeği burada.
+		if RunManager.pending_draft:
+			_show_draft()
 	else:
-		_title.offset_top = 380
-		_title.offset_bottom = 448
-		_subtitle.offset_top = 452
-		_subtitle.offset_bottom = 486
-		_info.offset_top = 494
-		_info.offset_bottom = 560
-		_action_btn.offset_top = 574
-		_action_btn.offset_bottom = 634
-		_btn_row.offset_top = 660
-		_btn_row.offset_bottom = 710
+		# ANA MENÜ: kurt görseli sağ yarıda → menünün tamamı SOL yarıya dizilir.
+		_skip_btn.visible = false
+		if _draft_layer != null and is_instance_valid(_draft_layer):
+			_draft_layer.queue_free()
+			_draft_layer = null
+		_fx.bg_texture = MENU_BG
+		_fx.tint = Color(0.97, 0.96, 0.95)
+		_fx.overlay = Color(0.0, 0.0, 0.0, 0.10)
+		_title.add_theme_font_override("font", FONT_TITLE)
+		_title.add_theme_font_size_override("font_size", 88)
+		for l: Control in [_title, _subtitle, _info]:
+			l.anchor_left = 0.0
+			l.anchor_right = 0.5
+		_action_btn.anchor_left = 0.25
+		_action_btn.anchor_right = 0.25
+		_action_btn.offset_left = -170
+		_action_btn.offset_right = 170
+		_btn_row.vertical = true
+		_btn_row.add_theme_constant_override("separation", 14)  # dikey sütun sıkı dursun
+		_btn_row.anchor_left = 0.25
+		_btn_row.anchor_right = 0.25
+		_btn_row.offset_left = -170
+		_btn_row.offset_right = 170
+		_seed_row.anchor_left = 0.25
+		_seed_row.anchor_right = 0.25
+		_records_panel.anchor_left = 0.25
+		_records_panel.anchor_right = 0.25
+		# Sütun üstten başlar, altta nefes payı kalır (900'de alt boşluk ~54px).
+		_title.offset_top = 140
+		_title.offset_bottom = 255
+		_subtitle.offset_top = 260
+		_subtitle.offset_bottom = 294
+		_info.offset_top = 300
+		_info.offset_bottom = 356
+		_action_btn.offset_top = 370
+		_action_btn.offset_bottom = 426
+		_btn_row.offset_top = 442          # 3 buton × 48 + 2 aralık × 14 = 172
+		_btn_row.offset_bottom = 614
+		_seed_row.offset_top = 630
+		_seed_row.offset_bottom = 664
+		_records_panel.offset_top = 676
+		_records_panel.offset_bottom = 726
 		_action_btn.text = Loc.t("btn_new_run")
 		match RunManager.last_outcome:
 			Enums.RunOutcome.RUN_WON:
@@ -341,6 +463,19 @@ func _refresh() -> void:
 		_update_asc_btn()
 
 
+## Rol draft'ı ASIL yeri köy tahtasıdır (zaferin hemen ardından — DraftOverlay).
+## Burası yalnız YEDEK: eski kayıttan pending_draft ile haritaya dönülmüşse sun.
+func _show_draft() -> void:
+	if _draft_layer != null and is_instance_valid(_draft_layer):
+		return
+	var d := DraftOverlay.new()
+	d.closed.connect(func():
+		_draft_layer = null
+		_refresh())
+	_draft_layer = d
+	add_child(d)
+
+
 func _update_asc_btn() -> void:
 	_asc_btn.text = Loc.t("map_asc_btn") % (_pending_ascension + 1)
 
@@ -352,8 +487,10 @@ func _cycle_ascension() -> void:
 
 
 func _on_action() -> void:
+	if _draft_layer != null and is_instance_valid(_draft_layer):
+		return  # önce draft kararı (overlay açıkken Enter köye girmesin)
 	if RunManager.has_active_run():
-		# Düğüm tipine göre rota: dükkân / olay / köy.
+		# Düğüm tipine göre rota: dükkân / olay / köy (elit köy de köy sahnesidir).
 		match RunManager.current_node().get("type", Enums.NodeType.VILLAGE):
 			Enums.NodeType.SHOP:
 				Fader.change_scene("res://scenes/shop.tscn")
@@ -459,10 +596,12 @@ func _draw_map() -> void:
 			continue
 		var p: Vector2 = pts[i]
 		var is_boss: bool = node["type"] == Enums.NodeType.BOSS
+		var is_mini: bool = is_boss and bool(node["config"].get("miniboss", false))
+		var is_elite: bool = node["type"] == Enums.NodeType.ELITE
 		var cleared: bool = node.get("cleared", false)
 		var current := i == RunManager.current_index
 		var pulse := 0.5 + 0.5 * sin(_t * 3.0)
-		var r := NODE_R * (1.4 if is_boss else 1.0) * ap
+		var r := NODE_R * ((1.15 if is_mini else 1.4) if is_boss else 1.0) * ap
 		var ntype: int = node["type"]
 		if is_boss:
 			var bcol := Palette.SAFFRON.darkened(0.15) if cleared else Palette.BLOOD
@@ -476,8 +615,12 @@ func _draw_map() -> void:
 			elif current:
 				ring = Palette.SAFFRON
 				house = Palette.IVORY
+			elif is_elite:
+				ring = Palette.SAFFRON.darkened(0.10)  # elit: altın çift halka + yıldız
 			_map_layer.draw_circle(p, r, Color(0.04, 0.05, 0.09, 1.0))
 			_map_layer.draw_arc(p, r, 0, TAU, 40, ring, 3.5)
+			if is_elite:
+				_map_layer.draw_arc(p, r + 5.0, 0, TAU, 40, ring.darkened(0.15), 1.8)
 			match ntype:
 				Enums.NodeType.SHOP:
 					_draw_coin_icon(p, r * 0.52, house)
@@ -485,6 +628,14 @@ func _draw_map() -> void:
 					_draw_question_icon(p, r * 0.55, house)
 				_:
 					_draw_houses(p, r * 0.60, house)
+					if is_elite and r > 6.0:
+						# Çatının üstünde minik altın yıldız (elit rozeti).
+						var sp := p + Vector2(0, -r * 0.62)
+						var scol := Palette.SAFFRON if not cleared else Palette.SAFFRON.darkened(0.25)
+						for k2 in range(2):
+							var ang2 := _t * 0.8 + PI * 0.25 * float(k2)
+							_map_layer.draw_line(sp + Vector2(cos(ang2), sin(ang2)) * 5.0,
+								sp - Vector2(cos(ang2), sin(ang2)) * 5.0, scol, 2.0)
 			if cleared:
 				# Sağ-alt köşede minik onay rozeti.
 				var bp := p + Vector2(r * 0.72, r * 0.72)

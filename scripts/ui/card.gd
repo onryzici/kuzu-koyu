@@ -48,12 +48,11 @@ var _facedown := true      ## yalnız dağıtım uçuşunda true (oyunda yüzler
 var _portrait: Texture2D = null
 var _is_anchor := false
 var _is_dead := false      ## gece kurda yem oldu
+var _is_slain := false     ## ayıklanan kurt: kart yerinde yaralı/kararmış kalır
 var _given := 0            ## verdiği ifade sayısı (pip göstergesi)
 var _claims_total := 0
 var _flipping := false
 var _hovered := false
-var _cut := 0.0          ## ayıklama kesme efekti (1->0 sönen çizik)
-var _split := 0.0        ## fiziksel 2'ye bölünme ilerlemesi (0->1)
 var _curse := 0.0        ## gece pençe efekti (1->0 kızıl-is dalgası)
 var _claw := 2.0         ## pençe savuruşları (0..2; ölüm animasyonunda sırayla iner)
 var _dust := 0.0         ## slota oturma toz bulutu (1->0)
@@ -75,19 +74,19 @@ func setup(s: int) -> void:
 ## Kart arkası (dağıtım uçuşu) canlı dursun diye yalnız o sırada her kare çiz.
 func _process(delta: float) -> void:
 	_t += delta
-	if _facedown and _split <= 0.0:
+	if _facedown:
 		queue_redraw()
 	# Nabızlı rozetler (çelişki/av önizlemesi) canlı kalsın.
 	if conflict_hint or night_risk_hint:
 		queue_redraw()
 	# Göz kolu yoklaması: dokunma yönüne yaslan + ürper (Balatro hover'ın dokunma
 	# sürümü); temas kesilince sönümlenip rotasyon sıfırlanır. Dağıtım (facedown)
-	# ve bölünme animasyonlarıyla çakışmasın diye o durumlarda dokunmaz.
+	# sırasında dokunmaz.
 	_probe_target = maxf(0.0, _probe_target - delta * 2.2)
 	_probe = lerpf(_probe, _probe_target, minf(1.0, delta * 9.0))
 	if _probe > 0.005:
 		_probe_active = true
-		if not _facedown and _split <= 0.0:
+		if not _facedown:
 			rotation = _probe_dir.x * 0.085 * _probe + sin(_t * 15.0) * 0.02 * _probe
 		queue_redraw()
 	elif _probe_active:
@@ -166,6 +165,7 @@ func refresh() -> void:
 	var c: Character = GameState.village.get_character(seat)
 	_is_anchor = seat in GameState.village.anchors
 	_is_dead = c.night_killed
+	_is_slain = c.executed and c.is_evil()
 	_given = c.given
 	_claims_total = c.claims.size()
 
@@ -298,14 +298,27 @@ func deal_in(target: Vector2, delay: float, deck_pos: Vector2) -> void:
 	t.tween_property(self, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
-## Ayıklama "kesme" efekti: çapraz parlayan çizik + punch.
-func play_cut() -> void:
-	_cut = 1.0
+## AYIKLANAN KURT: kart yok olmaz — yerinde pençelenir, kararır ve yara izleri +
+## çevresindeki kan lekeleriyle KALIR (kullanıcı kararı: eski ikiye-bölünme efekti
+## kaldırıldı; ceset sahnede kalınca hem daha okunur hem daha ürkütücü).
+func play_execute_death() -> void:
+	_bubble.visible = false
+	_curse = 1.0
 	var t := create_tween()
-	t.tween_method(func(v: float): _cut = v; queue_redraw(), 1.0, 0.0, 0.55)
-	var p := create_tween()
-	p.tween_property(self, "scale", Vector2(1.12, 0.92), 0.08).set_trans(Tween.TRANS_BACK)
-	p.tween_property(self, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	t.tween_method(func(v: float): _curse = v; queue_redraw(), 1.0, 0.0, 1.4)
+	# İki pençe savuruşu (gece avıyla aynı dil — tek yerde: _draw_claw_marks).
+	_claw = 0.0
+	var ct := create_tween()
+	ct.tween_interval(0.10)
+	for k in range(2):
+		ct.tween_method(func(v: float): _claw = v; queue_redraw(),
+			float(k), float(k) + 1.0, 0.16).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		ct.tween_callback(_claw_punch)
+		ct.tween_interval(0.22)
+	# Pençeler bitince kart kararıp "ölü" tonuna oturur (hafif kızıl kalıntı).
+	var m := create_tween()
+	m.tween_interval(0.85)
+	m.tween_property(self, "modulate", Color(0.82, 0.70, 0.70, 0.96), 0.7)
 
 
 ## Gece pençesi: kurt bu kartı avladı — kızıl-is dalgası + sarsıntı, sonra solgunlaşır.
@@ -334,20 +347,6 @@ func _claw_punch() -> void:
 	var p := create_tween()
 	p.tween_property(self, "scale", Vector2(1.09, 0.96), 0.05).set_trans(Tween.TRANS_SINE)
 	p.tween_property(self, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-
-
-## Kartı fiziksel olarak İKİYE böler — iki fazlı (seyredilebilir olsun):
-## 1) YIRTILMA: çatlak tepeden aşağı büyür, yarımlar ürpererek aralanır (yavaş).
-## 2) KOPUŞ: yarımlar dönerek, hızlanarak düşer ve söner.
-func play_split(duration := 0.75) -> void:
-	_bubble.visible = false
-	_split = 0.001
-	var t := create_tween()
-	t.tween_method(func(v: float): _split = v; queue_redraw(),
-		0.0, 0.30, duration * 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	t.tween_interval(duration * 0.08)
-	t.tween_method(func(v: float): _split = v; queue_redraw(),
-		0.30, 1.0, duration * 0.47).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
 ## Konuşma balonunu gizle (sinematik başında — ekran sade kalsın).
@@ -380,11 +379,6 @@ func animate_reveal() -> void:
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, size)
 
-	# Fiziksel bölünme oynuyorsa normal çizimin yerine onu çiz.
-	if _split > 0.0:
-		_draw_split()
-		return
-
 	# --- Dış parıltı/hale ---
 	var glow_col := _border_color
 	var glow := 0.0
@@ -404,7 +398,7 @@ func _draw() -> void:
 	if night_risk_hint and not _is_dead:
 		glow_col = Color(0.55, 0.65, 1.0)  # av önizlemesi: gece mavisi nabız
 		glow = maxf(glow, 0.35 + 0.20 * sin(_t * 5.0))
-	if glow > 0.0 and not _is_dead:
+	if glow > 0.0 and not (_is_dead or _is_slain):
 		for i in range(2):
 			var g := StyleBoxFlat.new()
 			g.bg_color = Color(glow_col.r, glow_col.g, glow_col.b, 0.08 * glow)
@@ -471,37 +465,39 @@ func _draw() -> void:
 		border.set_border_width_all(5)
 		draw_style_box(border, rect)
 
-		# Gece kurbanı: karartma + pençe yırtıkları (kavisli, uçlara incelen).
-		if _is_dead:
+		# Gece kurbanı / ayıklanan kurt: karartma + pençe yırtıkları (aynı dil).
+		if _is_dead or _is_slain:
 			var dark := StyleBoxFlat.new()
-			dark.bg_color = Color(0.06, 0.04, 0.05, 0.55)
+			# Kurt cesedi hafif kızıl-karanlık; koyun kurbanı gri-karanlık.
+			dark.bg_color = Color(0.10, 0.02, 0.03, 0.50) if _is_slain else Color(0.06, 0.04, 0.05, 0.55)
 			dark.set_corner_radius_all(RADIUS)
 			draw_style_box(dark, rect)
 			_draw_claw_marks()
-			# mezar işareti
-			var font := get_theme_default_font()
-			if font != null:
-				draw_string_outline(font, Vector2(W - 30, 30), "✝", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 4, Color(0, 0, 0, 0.9))
-				draw_string(font, Vector2(W - 30, 30), "✝", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color("d8cfc2"))
+			# mezar işareti yalnız gece kurbanında (kesin İYİ ceset — kanıt dili)
+			if _is_dead:
+				var font := get_theme_default_font()
+				if font != null:
+					draw_string_outline(font, Vector2(W - 30, 30), "✝", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 4, Color(0, 0, 0, 0.9))
+					draw_string(font, Vector2(W - 30, 30), "✝", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color("d8cfc2"))
 
 		# İfade pip'leri: verdiği/toplam (sorgu ekonomisi göstergesi, sol-üst).
-		if not _is_dead and _claims_total > 0:
+		if not (_is_dead or _is_slain) and _claims_total > 0:
 			for k in range(_claims_total):
 				var pc := Vector2(14 + k * 13.0, 14)
 				draw_circle(pc, 4.5, Color(0, 0, 0, 0.65))
 				draw_circle(pc, 3.2, Color("e4a72e") if k < _given else Color("4a3a30"))
 
 		# İşaret rozeti: sağ-üst köşeye oturan disk + çizilmiş şekil (hizalı, net).
-		if not _is_dead and _mark != Enums.MarkType.NONE:
+		if not (_is_dead or _is_slain) and _mark != Enums.MarkType.NONE:
 			_draw_mark_badge()
 
 		# Çelişki rozeti: sol-alt köşede amber şimşek — "bu ifade başka biriyle
 		# çelişiyor". Hover'da board çelişki ortaklarına kesikli hat çizer.
-		if not _is_dead and conflict_hint:
+		if not (_is_dead or _is_slain) and conflict_hint:
 			_draw_conflict_badge()
 
 		# Kapan rozeti: bu koltuğa gecelik tuzak kurulu (Tuzakçı yeteneği).
-		if not _is_dead and GameState.village != null and GameState.village.trap_seat == seat:
+		if not (_is_dead or _is_slain) and GameState.village != null and GameState.village.trap_seat == seat:
 			_draw_trap_badge()
 
 	if selected:
@@ -532,18 +528,6 @@ func _draw() -> void:
 
 	# --- Seat numarası kartın ÜSTÜNDE, konturlu pill ---
 	_draw_seat_tag()
-
-	# --- Ayıklama kesme efekti: çapraz parlayan çizik ---
-	if _cut > 0.0:
-		var a := _cut
-		var p1 := Vector2(-8, H * 0.16)
-		var p2 := Vector2(W + 8, H * 0.86)
-		draw_line(p1, p2, Color(0.7, 0.0, 0.0, a * 0.7), 16.0 * a + 3.0)
-		draw_line(p1, p2, Color(1.0, 0.95, 0.85, a), 5.0 * a + 2.0)
-		var dark2 := StyleBoxFlat.new()
-		dark2.bg_color = Color(0.0, 0.0, 0.0, 0.35 * a)
-		dark2.set_corner_radius_all(RADIUS)
-		draw_style_box(dark2, Rect2(Vector2.ZERO, size))
 
 
 ## İşaret rozeti: sağ-üst köşede koyu disk + renkli halka + VEKTÖR şekil.
@@ -739,76 +723,6 @@ func _portrait_src(interior: Rect2) -> Rect2:
 
 func _draw_portrait(interior: Rect2) -> void:
 	draw_texture_rect_region(_portrait, interior, _portrait_src(interior))
-
-
-## Fiziksel bölünme çizimi: iki yarım ayrılır/döner/düşer/söner.
-func _draw_split() -> void:
-	var prog := _split
-	var alpha := 1.0 - smoothstep(0.62, 1.0, prog)
-	var sep := prog * W * 0.55
-	var fall := prog * 44.0
-	var ang := prog * 0.42
-	# Yırtılma fazında yarımlar zıt yönde ürperir (gerilme hissi).
-	var jit := Vector2.ZERO
-	if prog < 0.33:
-		var force := (0.33 - prog) / 0.33
-		jit = Vector2(sin(_t * 55.0), cos(_t * 47.0)) * 2.6 * force
-	_draw_card_half(true, Vector2(-sep, fall) + jit, -ang, alpha)
-	_draw_card_half(false, Vector2(sep, fall * 1.12) - jit, ang, alpha)
-	if prog < 0.33:
-		# Çatlak tepeden aşağı BÜYÜR, kopuşa yaklaştıkça parlayıp söner.
-		var grow := clampf(prog / 0.26, 0.0, 1.0)
-		var fa := 1.0 - prog / 0.33
-		draw_line(Vector2(W * 0.5, -12), Vector2(W * 0.5, -12.0 + (H + 24.0) * grow),
-			Color(1.0, 0.96, 0.86, 0.4 + 0.6 * fa), 7.0)
-
-
-func _draw_card_half(is_left: bool, offset: Vector2, angle: float, alpha: float) -> void:
-	if alpha <= 0.0:
-		return
-	draw_set_transform(Vector2(W, H) * 0.5 + offset, angle, Vector2.ONE)
-	var hw := W * 0.5
-	var rect := Rect2(-hw, -H * 0.5, hw, H) if is_left else Rect2(0.0, -H * 0.5, hw, H)
-
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(_bg_color.r, _bg_color.g, _bg_color.b, alpha)
-	if is_left:
-		bg.corner_radius_top_left = RADIUS
-		bg.corner_radius_bottom_left = RADIUS
-	else:
-		bg.corner_radius_top_right = RADIUS
-		bg.corner_radius_bottom_right = RADIUS
-	draw_style_box(bg, rect)
-
-	if _portrait != null:
-		var interior := Rect2(5, 5, W - 10, H - 10)
-		var src := _portrait_src(interior)
-		var ci := Rect2(5 - hw, 5 - H * 0.5, W - 10, H - 10)
-		if is_left:
-			draw_texture_rect_region(_portrait,
-				Rect2(ci.position, Vector2(ci.size.x * 0.5, ci.size.y)),
-				Rect2(src.position, Vector2(src.size.x * 0.5, src.size.y)),
-				Color(1, 1, 1, alpha))
-		else:
-			draw_texture_rect_region(_portrait,
-				Rect2(ci.position + Vector2(ci.size.x * 0.5, 0), Vector2(ci.size.x * 0.5, ci.size.y)),
-				Rect2(src.position + Vector2(src.size.x * 0.5, 0), Vector2(src.size.x * 0.5, src.size.y)),
-				Color(1, 1, 1, alpha))
-
-	var border := StyleBoxFlat.new()
-	border.bg_color = Color(0, 0, 0, 0)
-	if is_left:
-		border.corner_radius_top_left = RADIUS
-		border.corner_radius_bottom_left = RADIUS
-	else:
-		border.corner_radius_top_right = RADIUS
-		border.corner_radius_bottom_right = RADIUS
-	border.border_color = Color(Palette.BLOOD.r, Palette.BLOOD.g, Palette.BLOOD.b, alpha)
-	border.set_border_width_all(4)
-	draw_style_box(border, rect)
-	draw_line(Vector2(0.0, -H * 0.5), Vector2(0.0, H * 0.5), Color(1.0, 0.4, 0.15, alpha * 0.9), 3.0)
-
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Minik elmas perçin (kart arkası köşe süsü): renkli elmas + fildişi parlak nokta.

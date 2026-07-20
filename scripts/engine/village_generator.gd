@@ -61,6 +61,9 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 	var has_trapper: bool = config.get("trapper", false)     # Tuzakçı var mı
 	var jinxed_count: int = config.get("jinxed_count", 0)    # Uğursuz sayısı
 	var role_tier: int = config.get("role_tier", 99)         # rol açılım kademesi (çile)
+	var cull_damage: int = config.get("cull_damage", 5)      # Kuraklık: 7
+	var modifiers: Array = config.get("modifiers", [])       # köy kuralları (İLAN edilir)
+	var role_pool: Array = config.get("role_pool", [])       # sefer destesi (draft; boş = tüm havuz)
 
 	for attempt in range(max_attempts):
 		# Uzun süre çözülemezse anchor sayısını kademeli artır (simetriyi kır, §5.7).
@@ -68,12 +71,20 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 		if attempt > max_attempts / 2:
 			anchor_count = base_anchors + 1
 
-		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, has_trapper, jinxed_count, role_tier, rng)
+		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, has_trapper, jinxed_count, role_tier, role_pool, rng)
 		state.q_per_day = q_per_day
 		state.night_rule = night_rule  # bot gece simülasyonu da bu kuralla oynar
 		state.questions_left = q_per_day
 		state.max_days = max_days
 		state.kills_per_night = kills_per_night
+		state.cull_damage = cull_damage
+		state.modifiers = modifiers.duplicate()
+		# SUSKUN SÜRÜ modifier'ı: herkesin TEK ifadesi var — sorgu ekonomisi sıkışır.
+		# Teklik + bot-bütçe kontrolleri bu kırpılmış hâl üzerinde koşar (adalet korunur).
+		if modifiers.has("silent"):
+			for c in state.characters:
+				if c.claims.size() > 1:
+					c.claims = c.claims.slice(0, 1)
 
 		# a) Taban teklik: tüm ifadeler verilmiş sayılırken tek çözüm mü?
 		for c in state.characters:
@@ -136,7 +147,7 @@ static func _budget_solvable(state: VillageState) -> bool:
 	return false
 
 
-static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, has_trapper: bool, jinxed_count: int, role_tier: int, rng: RandomNumberGenerator) -> VillageState:
+static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, has_trapper: bool, jinxed_count: int, role_tier: int, role_pool: Array, rng: RandomNumberGenerator) -> VillageState:
 	var state := VillageState.new()
 	state.n = n
 	state.evil_count = evil_count
@@ -168,18 +179,24 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 	# Köy-özel rol havuzu: koşullu roller (Terzi ≥2 kurt, Aynacı çift n) ancak
 	# anlamlıysa havuza girer. Bluff/köylü/sarhoş hepsi bu havuzdan çeker —
 	# kurt da ancak bu köyde var olabilecek bir rolü taklit edebilir (adalet).
+	# role_pool doluysa (sefer destesi — draft ile büyür) yalnız o roller aday olur.
+	var source: Array = []
+	if role_pool.is_empty():
+		source = GOOD_ROLES.duplicate()
+		source.append_array([&"Beadcounter", &"Skittish", &"Tailor", &"Mirrorwright"])
+	else:
+		for rp in role_pool:
+			source.append(StringName(rp))
 	var pool_all: Array = []
-	for r in GOOD_ROLES:
-		if ROLE_TIERS.get(r, 0) <= role_tier:
+	for r in source:
+		if ROLE_TIERS.get(r, 0) > role_tier:
+			continue
+		if r == &"Tailor" and evil_count < 2:
+			continue
+		if r == &"Mirrorwright" and n % 2 != 0:
+			continue
+		if not pool_all.has(r):
 			pool_all.append(r)
-	if ROLE_TIERS.get(&"Beadcounter", 0) <= role_tier:
-		pool_all.append(&"Beadcounter")
-	if ROLE_TIERS.get(&"Skittish", 0) <= role_tier:
-		pool_all.append(&"Skittish")
-	if evil_count >= 2 and ROLE_TIERS.get(&"Tailor", 0) <= role_tier:
-		pool_all.append(&"Tailor")
-	if n % 2 == 0 and ROLE_TIERS.get(&"Mirrorwright", 0) <= role_tier:
-		pool_all.append(&"Mirrorwright")
 
 	state.omen_type = effective_omen
 	state.omen_params = {}
@@ -199,12 +216,12 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		chars[s].bluff_role = pool_all[rng.randi() % pool_all.size()]
 
 	# İyi köylülere MÜMKÜN OLDUĞUNCA BENZERSIZ rol ver (tekrarlı tanıklık olmasın).
-	var role_pool := _sample(pool_all, pool_all.size(), rng)
+	var assign_pool := _sample(pool_all, pool_all.size(), rng)
 	var ri := 0
 	for i in range(n):
 		if chars[i].alignment == Enums.Alignment.GOOD:
 			chars[i].category = Enums.Category.VILLAGER
-			chars[i].role = role_pool[ri % role_pool.size()]
+			chars[i].role = assign_pool[ri % assign_pool.size()]
 			ri += 1
 
 	# Omen varsa: bir GOOD seat'i Müneccim (Astrologer) yap — Gizli Kural'ı ifşa eder.
@@ -564,33 +581,56 @@ static func make_false_claim(bluff_role: StringName, speaker: int, world: Dictio
 ## bluff_role'un tanıklık tipinde ama ground truth'ta kesinlikle YANLIŞ bir claim.
 ## Yöntem (§18): önce o rolün DOĞRU claim'ini üret, sonra iddia edilen değeri
 ## bozarak yalana çevir. Böylece gösterilen rol ile tanıklık tipi tutarlı kalır.
+##
+## İNANDIRICILIK KURALI (§7.3 adalet): yalan, HERKESİN bildiği gerçeklerle
+## (n koltuk + ilan edilmiş kurt sayısı) çelişemez. "2 kurtlu köyde 3 kurt" ya da
+## "5 koltukta 4 adım öte" gibi alenen imkânsız değerler yalancıyı bedavaya ele
+## verirdi; tüm yanlış değerler kamusal-mümkün aralıktan seçilir.
 static func _false_claim(bluff_role: StringName, speaker: int, world: Dictionary, n: int, rng: RandomNumberGenerator) -> TestimonyClaim:
 	var al: Array = world["alignment"]
 	var evil_seats: Array = world["evil_seats"]
+	var e := evil_seats.size()
 	var t := _true_claim(bluff_role, speaker, world, n, rng)
 
 	match t.type:
 		Enums.TestimonyType.ALIGNMENT_OF:
 			t.alignment = Enums.Alignment.GOOD if t.alignment == Enums.Alignment.EVIL else Enums.Alignment.EVIL
 		Enums.TestimonyType.COUNT_IN_SET:
-			t.number = _other_count(t.number, t.targets.size(), rng)
+			t.number = _other_count(t.number, mini(t.targets.size(), e), rng)
 		Enums.TestimonyType.NEIGHBOR_HAS_EVIL:
-			t.number = _other_count(t.number, 2, rng)
+			t.number = _other_count(t.number, mini(2, e), rng)
 		Enums.TestimonyType.NEAREST_EVIL_DISTANCE:
-			t.number = _wrong_distance(t.number, n)
+			# Konuşan kurtsa "gerçek" mesafesi öteki kurda göredir (tek kurtta n
+			# çıkar) — yanlış değer her durumda kamusal [1, maxd] aralığından gelir.
+			t.number = _wrong_distance(t.number, _max_nearest_dist(n, e), rng)
 		Enums.TestimonyType.NEAREST_EVIL_DIRECTION:
-			t.direction = _other_direction(t.direction, rng)
+			# "Eşit mesafede" ancak 2+ kurtla ya da çift n'de mümkündür.
+			t.direction = _other_direction(t.direction, e >= 2 or n % 2 == 0, rng)
 		Enums.TestimonyType.EVIL_COUNT_IN_REGION:
-			t.compare = _other_compare(t.compare, rng)
+			# İki yarıda eşit kurt, toplam kurt sayısı tekken (iyi konuşmacı için) imkânsız.
+			t.compare = _other_compare(t.compare, e % 2 == 0, rng)
 		Enums.TestimonyType.PAIR_RELATION:
 			t.bool_val = not t.bool_val
 		Enums.TestimonyType.COUNT_PARITY_IN_SET:
 			t.bool_val = not t.bool_val
 		Enums.TestimonyType.NEAREST_EVIL_MIN_DIST:
-			# Eşitsizliği ters çevir: d>k iken "d<k" (ve tersi) kesin yanlış.
-			t.compare = Enums.Compare.LESS if t.compare == Enums.Compare.GREATER else Enums.Compare.GREATER
+			# Eşitsizlik yalanı iki yönden kurulabilir; ikisi de hem YANLIŞ hem
+			# kamusal sınırda kalmalı: "d>k" için d_true<=k<maxd (k'dan uzak
+			# olmadığı kesin), "d<k" için 2<=k<=min(d_true, maxd). Seed'li seçim.
+			var d_true := BoardTopology.nearest_evil_distance(speaker, evil_seats, n)
+			var maxd := _max_nearest_dist(n, e)
+			var opts: Array = []
+			for kg in range(maxi(1, d_true), maxd):
+				opts.append([Enums.Compare.GREATER, kg])
+			for kl in range(2, mini(d_true, maxd) + 1):
+				opts.append([Enums.Compare.LESS, kl])
+			if not opts.is_empty():
+				var pick: Array = opts[rng.randi() % opts.size()]
+				t.compare = pick[0]
+				t.number = pick[1]
 		Enums.TestimonyType.WOLF_GAP:
-			t.number = _wrong_distance(t.number, n)
+			# e kurdun en yakın ikisi en fazla floor(n/e) adım açılabilir (güvercin yuvası).
+			t.number = _wrong_distance(t.number, int(n / float(maxi(e, 1))), rng)
 		Enums.TestimonyType.OPPOSITE_ALIGNMENT:
 			t.alignment = Enums.Alignment.GOOD if t.alignment == Enums.Alignment.EVIL else Enums.Alignment.EVIL
 		_:
@@ -634,28 +674,45 @@ static func _other_count(true_val: int, max_count: int, rng: RandomNumberGenerat
 	return options[rng.randi() % options.size()]
 
 
-static func _wrong_distance(true_val: int, n: int) -> int:
-	var w := true_val + 1
-	if w > int(n / 2.0):
-		w = max(1, true_val - 1)
-	if w == true_val:
-		w = true_val + 1
-	return w
+## Kompozisyon herkese açıkken (e kurt, n koltuk) "en yakın kurda mesafe"nin
+## alabileceği en büyük değer: kurtlar tek blok olsa bile kalan boşluğun
+## ortasındaki koyunun mesafesi = floor((n-e+1)/2). İYİ bir konuşmacı için
+## bundan büyüğü alenen imkânsızdır — yalan da bu sınırın içinde kalmalı.
+static func _max_nearest_dist(n: int, e: int) -> int:
+	return maxi(1, int((n - e + 1) / 2.0))
 
 
-static func _other_direction(true_dir: int, rng: RandomNumberGenerator) -> int:
+## true_val'dan farklı, [1, max_plaus] içinde bir "yanlış mesafe". max_plaus,
+## kompozisyondan türeyen kamusal üst sınırdır (bkz. _false_claim inandırıcılık
+## kuralı) — çemberin yarısından ya da kurt sayısının izin verdiğinden büyük
+## sayı söyleyen yalan kendini ele verir.
+static func _wrong_distance(true_val: int, max_plaus: int, rng: RandomNumberGenerator) -> int:
 	var options: Array = []
-	for d in [Enums.Direction.CLOCKWISE, Enums.Direction.COUNTER_CLOCKWISE, Enums.Direction.EQUIDISTANT]:
-		if d != true_dir:
-			options.append(d)
+	for k in range(1, max_plaus + 1):
+		if k != true_val:
+			options.append(k)
+	if options.is_empty():
+		return true_val + 1  # tek seçenek gerçeğin kendisi: evaluate-fallback devralır
 	return options[rng.randi() % options.size()]
 
 
-static func _other_compare(true_cmp: int, rng: RandomNumberGenerator) -> int:
+static func _other_direction(true_dir: int, allow_equidistant: bool, rng: RandomNumberGenerator) -> int:
 	var options: Array = []
-	for c in [Enums.Compare.LESS, Enums.Compare.EQUAL, Enums.Compare.GREATER]:
+	for d in [Enums.Direction.CLOCKWISE, Enums.Direction.COUNTER_CLOCKWISE]:
+		if d != true_dir:
+			options.append(d)
+	if allow_equidistant and true_dir != Enums.Direction.EQUIDISTANT:
+		options.append(Enums.Direction.EQUIDISTANT)
+	return options[rng.randi() % options.size()]
+
+
+static func _other_compare(true_cmp: int, allow_equal: bool, rng: RandomNumberGenerator) -> int:
+	var options: Array = []
+	for c in [Enums.Compare.LESS, Enums.Compare.GREATER]:
 		if c != true_cmp:
 			options.append(c)
+	if allow_equal and true_cmp != Enums.Compare.EQUAL:
+		options.append(Enums.Compare.EQUAL)
 	return options[rng.randi() % options.size()]
 
 

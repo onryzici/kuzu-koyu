@@ -53,6 +53,16 @@ const GRASS_SPOTS := [
 
 const VILLAGE_CONFIG := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1}
 
+## Köye giriş kartı için başlık fontu (menüyle aynı: Revoback).
+const FONT_TITLE: Font = preload("res://assets/fonts/Revoback.ttf")
+
+## Seed'li köy adları (giriş kartında). Revoback'te ğ/ı/ş/İ glyph'i yok — liste
+## bilerek yalnız güvenli harflerden (Ç Ö Ü dahil) kurulu.
+const VILLAGE_NAMES := [
+	"KUZUÖREN", "KURTKAYA", "KARAKOYUN", "DOLUNAY", "AYAZKÖY", "BOZTEPE",
+	"YÜNKÖY", "KURUDERE", "ALACAKAYA", "KARAÇALI", "OBRUK", "KANLICA",
+]
+
 const MARK_CYCLE := [
 	Enums.MarkType.NONE,
 	Enums.MarkType.MARK_GOOD,
@@ -97,6 +107,8 @@ var _burst_layer: Control         ## kanın kartların ÜSTÜNDE uçtuğu katman
 var _kill_label: Label            ## sinematikte kurdun son repliği
 # --- Dedüksiyon UX (yalnız görsel yardım; motor kararlarına dokunmaz) ---
 var _log: TestimonyLog            ## İfade Defteri (TAB / HUD butonu)
+var _intro_layer: Control         ## köye giriş kartı (siyah zemin + başlık)
+var _intro_done := false
 var _ribbon: RibbonBanner         ## animasyonlu duyuru şeridi (flash_banner hedefi)
 var _tutorial: TutorialGuide      ## sefer ilk köyünde rehber (bir kez)
 var _worlds: Array = []           ## solver'ın tutarlı dünyaları (olay sonrası önbellek)
@@ -206,7 +218,6 @@ func _new_village() -> void:
 		push_error("Köy üretilemedi")
 		return
 	GameState.start_village(state)
-	AudioManager.play_deal()
 	_hud.hide_overlay()
 	_hud.update_all()  # üst panelleri HEMEN doldur
 	_set_execute_mode(false)
@@ -225,10 +236,127 @@ func _new_village() -> void:
 	if _log != null:
 		_log.set_open(false)
 	_recompute_deduction()
+	# Kartlar giriş kartı bitene dek görünmesin (deal intro sonunda başlar).
+	for card in _cards:
+		card.modulate.a = 0.0
+	_start_village_intro(conf)
+	queue_redraw()
+
+
+## KÖYE GİRİŞ KARTI: Fader'ın karanlığından çıkarken siyah zemin üstünde perde +
+## köy adı + kompozisyon + modifier uyarıları belirir; sonra kart kalkarken deste
+## dağıtılır (kullanıcı isteği: "Sürüye Gir" geçişi sahnelensin). Tık = geç.
+func _start_village_intro(conf: Dictionary) -> void:
+	_cinematic = true
+	_intro_done = false
+	var v := GameState.village
+
+	_intro_layer = Control.new()
+	_intro_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_intro_layer.z_index = 350
+	_intro_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_intro_layer.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventMouseButton and ev.pressed:
+			_end_village_intro())
+	add_child(_intro_layer)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.01, 0.005, 0.01, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_layer.add_child(bg)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	box.anchor_left = 0.5
+	box.anchor_right = 0.5
+	box.anchor_top = 0.5
+	box.anchor_bottom = 0.5
+	box.offset_left = -430
+	box.offset_right = 430
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro_layer.add_child(box)
+
+	var lines: Array = []  # [Label, gecikme]
+	if RunManager.has_active_run():
+		var act_i: int = int(RunManager.current_node().get("act", 1))
+		var act_keys := ["act_meadow", "act_valley", "act_forest", "act_endless"]
+		lines.append(_intro_label(box, Loc.t("act_line") % [act_i, Loc.t(act_keys[clampi(act_i - 1, 0, 3)])],
+			18, Palette.SAFFRON.darkened(0.05)))
+
+	# Başlık: boss adı ya da seed'li köy adı (Revoback — menü başlığıyla aynı dil).
+	var title_text: String
+	if conf.get("boss", false):
+		title_text = Loc.t(String(conf.get("boss_name", "boss_default")))
+	else:
+		title_text = VILLAGE_NAMES[absi(int(conf.get("seed", 0))) % VILLAGE_NAMES.size()]
+	var title := _intro_label(box, title_text, 64, Palette.IVORY)
+	title.add_theme_font_override("font", FONT_TITLE)
+	lines.append(title)
+
+	if conf.get("elite", false):
+		lines.append(_intro_label(box, Loc.t("intro_elite_badge"), 17, Palette.SAFFRON))
+
+	# Kompozisyon + gece kuralı tek satırda (köye dair her şey baştan açık — §7.3).
+	var comp := Loc.t("intro_comp") % [v.n - v.evil_count - v.outcast_count, v.outcast_count, v.evil_count]
+	if v.kills_per_night >= 2:
+		comp += Loc.t("intro_kills") % v.kills_per_night
+	if v.night_rule == Enums.NightRule.FARTHEST:
+		comp += Loc.t("intro_foggy")
+	lines.append(_intro_label(box, comp, 17, Palette.IVORY.darkened(0.10)))
+
+	if not v.modifiers.is_empty():
+		var mod_lines: Array = []
+		for m in v.modifiers:
+			mod_lines.append(Loc.t("mod_%s" % m))
+		lines.append(_intro_label(box, "⚠ " + "  ·  ".join(mod_lines), 15, Color("f0b53c")))
+
+	lines.append(_intro_label(box, Loc.t("intro_skip"), 12, Color(1, 1, 1, 0.30)))
+
+	# Satırlar sırayla belirip hafif yukarı süzülür.
+	for i in range(lines.size()):
+		var l: Label = lines[i]
+		l.modulate.a = 0.0
+		var t := l.create_tween()
+		t.tween_interval(0.12 + i * 0.14)
+		t.tween_property(l, "modulate:a", 1.0, 0.35)
+	# Uzaktan tek uluma — köyün eşiğindeyiz hissi (kısık).
+	AudioManager.sfx("howl", -22.0, 1.06)
+	# Node'a bağlı tween (sahne değişirse callback güvenle ölür — SceneTreeTimer değil).
+	var auto := create_tween()
+	auto.tween_interval(2.1)
+	auto.tween_callback(_end_village_intro)
+
+
+func _intro_label(parent: Node, text: String, fs: int, col: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("font_size", fs)
+	l.add_theme_color_override("font_color", col)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
+
+
+## Giriş kartını kapat: kart kalkarken deste dağıtılır + HUD içeri kayar.
+func _end_village_intro() -> void:
+	if _intro_done:
+		return
+	_intro_done = true
+	_cinematic = false
+	AudioManager.play_deal()
 	_deal_cards()
 	_hud.play_intro()
 	_maybe_start_tutorial()
-	queue_redraw()
+	if _intro_layer != null and is_instance_valid(_intro_layer):
+		_intro_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var t := create_tween()
+		t.tween_property(_intro_layer, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE)
+		t.tween_callback(_intro_layer.queue_free)
+	_intro_layer = null
 
 
 ## Sefer başı REHBER (§12): yalnız ilk düğümde ve daha önce tamamlanmadıysa.
@@ -345,11 +473,18 @@ func _update_grass_fx(delta: float) -> void:
 
 
 ## Dedüksiyon yardımını tazele: solver dünyaları + çelişki çiftleri.
-## Her bilgi olayı (sorgu/gece/ayıklama/kılıç) sonrası çağrılır. n<=9 için ucuz.
-func _recompute_deduction() -> void:
-	_conflicts.clear()
+## Her bilgi olayı (sorgu/gece/ayıklama/kılıç) sonrası çağrılır.
+##
+## OPTİMİZASYON (n=11-12 + Sonsuz Sürü için): çelişki kontrolü çift başına bir
+## solver çağrısı. Bir SORGU yalnız o koltuğun çiftlerini etkileyebilir (iki kişilik
+## dürüstlük testi sadece o ikilinin ifadelerine + global kısıtlara bakar) →
+## changed_seat verilirse yalnız onun çiftleri yeniden denenir (sorgu başına
+## O(konuşan) çağrı; tam matris O(konuşan²) geç köylerde takılma yapıyordu).
+## Global kısıt değiştiren olaylarda (gece/ayıklama/kapan/Omen öğrenme) tam matris.
+func _recompute_deduction(changed_seat: int = -1) -> void:
 	_worlds = []
 	if GameState.village == null:
+		_conflicts.clear()
 		return
 	var v := GameState.village
 	_worlds = DeductionSolver.solve(v.visible_for_solver())
@@ -359,17 +494,38 @@ func _recompute_deduction() -> void:
 	for c in v.characters:
 		if c.given > 0 and not c.revealed:
 			speakers.append(c.seat)
-	for i in range(speakers.size()):
-		for j in range(i + 1, speakers.size()):
-			var a: int = speakers[i]
-			var b: int = speakers[j]
-			if not _can_both_be_honest(v, a, b):
-				if not _conflicts.has(a):
-					_conflicts[a] = []
-				if not _conflicts.has(b):
-					_conflicts[b] = []
-				_conflicts[a].append(b)
-				_conflicts[b].append(a)
+	if changed_seat >= 0 and changed_seat in speakers:
+		# Artımlı: önce changed_seat'in eski bağlarını sök, sonra yalnız onun
+		# çiftlerini yeniden dene (diğer çiftler bu sorgudan etkilenmez).
+		if _conflicts.has(changed_seat):
+			for other in _conflicts[changed_seat]:
+				_conflicts[other].erase(changed_seat)
+				if _conflicts[other].is_empty():
+					_conflicts.erase(other)
+			_conflicts.erase(changed_seat)
+		for s in speakers:
+			if s == changed_seat:
+				continue
+			if not _can_both_be_honest(v, changed_seat, s):
+				if not _conflicts.has(changed_seat):
+					_conflicts[changed_seat] = []
+				if not _conflicts.has(s):
+					_conflicts[s] = []
+				_conflicts[changed_seat].append(s)
+				_conflicts[s].append(changed_seat)
+	else:
+		_conflicts.clear()
+		for i in range(speakers.size()):
+			for j in range(i + 1, speakers.size()):
+				var a: int = speakers[i]
+				var b: int = speakers[j]
+				if not _can_both_be_honest(v, a, b):
+					if not _conflicts.has(a):
+						_conflicts[a] = []
+					if not _conflicts.has(b):
+						_conflicts[b] = []
+					_conflicts[a].append(b)
+					_conflicts[b].append(a)
 	for card in _cards:
 		card.conflict_hint = _conflicts.has(card.seat)
 		card.queue_redraw()
@@ -497,9 +653,9 @@ const WOLF_LAST_WORDS := [
 ]
 
 
-## Kurt kartı OLDUĞU YERDE yırtılır (zoom/merkeze taşıma yok — kullanıcı kararı).
-## Sekans: hafif karartma + kart yerinde belirginleşir → replik → iki fazlı
-## yırtılma (çatlak + kopuş, ~1.7 sn) → toparlanma. Kan izi koltuğa işler.
+## Kurt kartı OLDUĞU YERDE pençelenir (zoom/bölünme yok — kullanıcı kararı):
+## hafif karartma + kart öne çıkar → replik → iki pençe savuruşu + kan sıçraması →
+## kart YARALI/KARARMIŞ hâliyle yerinde KALIR; çevresinde koyulaşan kan lekeleri.
 func _play_execute_cinematic(card: CardView) -> void:
 	_cinematic = true
 	if _tooltip != null:
@@ -525,14 +681,15 @@ func _play_execute_cinematic(card: CardView) -> void:
 		Vector2(line_x, card.position.y - 30.0))
 
 	await get_tree().create_timer(0.35).timeout
-	card.play_split(1.7)  # yırtılma seyredilsin: yavaş çatlak + kopuş
-	_spawn_blood_burst(card.position + card.size * 0.5)  # kopuş ânında sıçrama
-	await get_tree().create_timer(1.95).timeout
-	card.visible = false  # kurt yok oldu
-	card.scale = Vector2.ONE
+	card.play_execute_death()
+	_spawn_blood_burst(card.position + card.size * 0.5)  # savuruş ânında sıçrama
+	await get_tree().create_timer(1.5).timeout
 
 	var ft := create_tween()
+	ft.set_parallel(true)
 	ft.tween_property(_cine_dim, "modulate:a", 0.0, 0.35)
+	ft.tween_property(card, "scale", Vector2.ONE, 0.35) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await ft.finished
 	_cine_dim.visible = false
 	card.z_index = 0
@@ -569,12 +726,14 @@ func _draw_blood_parts() -> void:
 ## Sinematikte parlak, sonra soluk kalıcı iz (köy sonuna dek).
 func _spawn_blood_stain(pos: Vector2) -> void:
 	var blobs: Array = []
-	for i in range(14):
+	# Lekeler kartın ETRAFINA oturur (merkezde değil) — ölen kart görünür kalır,
+	# çevresi kanla çevrelenir (kullanıcı kararı).
+	for i in range(16):
 		var ang := _fx_rng.randf_range(0.0, TAU)
-		var dist := _fx_rng.randf_range(0.0, 64.0) * (1.0 + _fx_rng.randf() * 0.6)
+		var dist := _fx_rng.randf_range(38.0, 104.0)
 		blobs.append({
-			"off": Vector2(cos(ang), sin(ang)) * dist * Vector2(1.0, 0.72),
-			"r": _fx_rng.randf_range(3.0, 15.0) * (1.0 - dist / 130.0),
+			"off": Vector2(cos(ang), sin(ang)) * dist * Vector2(1.0, 0.80),
+			"r": _fx_rng.randf_range(4.0, 15.0) * (1.0 - dist / 230.0),
 		})
 	# Birkaç uzun damla sıçrama yönünde.
 	var splash_a := _fx_rng.randf_range(0.0, TAU)
@@ -621,7 +780,10 @@ func _on_questioned(seat: int) -> void:
 			card.refresh()
 	if _hud != null:
 		_hud.update_all()
-	_recompute_deduction()
+	# Müneccim Omen'i öğretmiş olabilir (global kısıt) → tam matris; değilse artımlı.
+	var full := GameState.village != null \
+			and GameState.village.get_character(seat).role == &"Astrologer"
+	_recompute_deduction(-1 if full else seat)
 	# Yön/mesafe ifadesi: çember üzerinde otomatik görselleştir.
 	if _clue_claim(seat) != null:
 		_clue_seat = seat
@@ -737,9 +899,9 @@ func _process(delta: float) -> void:
 	_time += delta
 	_update_grass_fx(delta)
 	_probe_cards()
-	# Kan izleri taze kızıldan soluk kalıcı ize sönümlenir.
+	# Kan izleri taze kızıldan KOYULAŞMIŞ (kurumuş) kalıcı ize sönümlenir.
 	for stn in _blood_stains:
-		stn.alpha = maxf(0.34, stn.alpha - delta * 0.35)
+		stn.alpha = maxf(0.55, stn.alpha - delta * 0.35)
 	# Anlık kan sıçraması parçacıkları: savrul, yavaşla, sön.
 	if not _blood_parts.is_empty():
 		var alive_p: Array = []
@@ -847,13 +1009,16 @@ func _draw() -> void:
 		for gl in [[52.0, 0.06], [26.0, 0.11], [11.0, 0.18]]:
 			draw_circle(cp, gl[0] * cs * fl, Color(1.0, 0.52, 0.18, gl[1] * fl))
 
-	# Kan izleri: kurt ayıklanan koltuklarda kalıcı leke (sinematikte parlak doğar,
-	# _process soluk kalıcı değere sönümler).
+	# Kan izleri: ölüm koltuklarının çevresinde kalıcı leke. Taze kan parlak kızıl
+	# doğar, zamanla KURUMUŞ koyu kahve-kızıla döner (alpha 1.0 → 0.55 sönümü
+	# "tazelik" olarak okunur; leke kaybolmaz, koyulaşır — kullanıcı kararı).
 	for stn in _blood_stains:
 		var sa: float = stn.alpha
+		var fresh := clampf((sa - 0.55) / 0.45, 0.0, 1.0)
+		var base := Color(0.20, 0.012, 0.015).lerp(Color(0.55, 0.05, 0.04), fresh)
 		for b in stn.blobs:
-			draw_circle(stn.pos + b.off, b.r, Color(0.42, 0.02, 0.02, 0.62 * sa))
-			draw_circle(stn.pos + b.off, b.r * 0.62, Color(0.30, 0.01, 0.01, 0.5 * sa))
+			draw_circle(stn.pos + b.off, b.r, Color(base.r, base.g, base.b, 0.78))
+			draw_circle(stn.pos + b.off, b.r * 0.62, Color(base.r * 0.55, base.g * 0.6, base.b * 0.6, 0.7))
 
 	# Kesikli (dashed) boş kart slotları — kartlar buraya tek tek dağıtılır.
 	for slot in _slots:
@@ -1375,6 +1540,10 @@ func _on_card_hover(seat: int, entered: bool) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		# Giriş kartı açıkken herhangi bir tuş = geç.
+		if not _intro_done and _intro_layer != null and is_instance_valid(_intro_layer):
+			_end_village_intro()
+			return
 		# 1–5: üstüne gelinen karta mark koy.
 		if _hovered_seat >= 0 and MARK_KEYS.has(event.keycode):
 			GameState.set_mark(_hovered_seat, MARK_KEYS[event.keycode])
@@ -1388,7 +1557,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				# G: günü bitir (gece).
 				_on_end_day()
 			KEY_R:
-				_new_village()
+				if not _cinematic:
+					_new_village()
 
 
 ## TAB burada (unhandled değil): UI odak gezintisi (buton sekmesi) TAB'ı yutuyordu.
@@ -1404,12 +1574,26 @@ func _input(event: InputEvent) -> void:
 func _on_village_won(_score: int) -> void:
 	_set_execute_mode(false)
 	_spawn_win_burst()  # altın yıldız patlaması (sinematikle birlikte)
-	# Son kurt ayıklanınca HEMEN sonuç ekranına atlama; kurt kartının açılışı +
-	# kesme efekti görünsün, sonra geç. (HUD "Sürü kurtarıldı" overlay'i de gecikir.)
+	# Zafer ânında sahne SADELEŞSİN: balonlar ve tooltip kalksın — kutlama yazıları
+	# kart/balon kalabalığının üstüne binmesin (kullanıcı geri bildirimi).
+	if _tooltip != null:
+		_tooltip.hide_tip()
+	for card in _cards:
+		card.hide_bubble()
+	if _log != null:
+		_log.set_open(false)
+	# Son kurt ayıklanınca HEMEN sonuç ekranına atlama; pençe sinematiği (~2.7 sn)
+	# görünsün, sonra geç. (Bağımsız modda HUD overlay'i sinematik sonrası gelir.)
 	if RunManager.has_active_run():
-		await get_tree().create_timer(3.7).timeout  # ayıklama sinematiği (~3.4 sn) bitsin
+		await get_tree().create_timer(3.2).timeout
 		RunManager.on_village_won(GameState.score, GameState.health)
 		if RunManager.has_active_run():
+			# ROL DRAFT'I burada — zaferin hemen ardından, köyden ayrılmadan
+			# (kullanıcı kararı: haritada geç geliyordu). Seçim bitince haritaya.
+			if RunManager.pending_draft:
+				var draft := DraftOverlay.new()
+				add_child(draft)
+				await draft.closed
 			# Köy kazanıldı, sefer sürüyor → haritaya dön (dükkân/olay artık DÜĞÜM).
 			Fader.change_scene.call_deferred("res://scenes/run_map.tscn")
 		else:

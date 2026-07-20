@@ -39,6 +39,7 @@ func _build() -> void:
 	_add_slider(vb, Loc.t("settings_sfx"), "vol_sfx", s.get("vol_sfx", 1.0))
 	_add_fullscreen_toggle(vb, s.get("fullscreen", false))
 	_add_language_row(vb)
+	_add_codex_button(vb)
 
 	var back := Button.new()
 	back.text = Loc.t("ui_back")
@@ -132,6 +133,28 @@ func _add_language_row(parent: Node) -> void:
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(560, 0)
 	row.add_child(note)
+
+
+## Karakterler (Codex) — ana menüden kaldırıldı (sadelik); buradan açılır.
+## Overlay modunda sahne değiştirmeden GameMenu katmanında üste açılır.
+func _add_codex_button(parent: Node) -> void:
+	var btn := Button.new()
+	btn.text = Loc.t("menu_chars")
+	btn.add_theme_font_size_override("font_size", 20)
+	btn.custom_minimum_size = Vector2(560, 44)
+	for st in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Palette.CRIMSON.darkened(0.45) if st == "normal" else Palette.CRIMSON.darkened(0.25)
+		sb.set_corner_radius_all(10)
+		sb.set_content_margin_all(8)
+		btn.add_theme_stylebox_override(st, sb)
+	btn.add_theme_color_override("font_color", Palette.IVORY)
+	btn.pressed.connect(func():
+		if overlay_mode:
+			GameMenu.open_codex()
+		else:
+			Fader.change_scene("res://scenes/codex.tscn"))
+	parent.add_child(btn)
 
 
 func _toggle_language() -> void:
