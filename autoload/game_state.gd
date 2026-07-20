@@ -83,13 +83,13 @@ func question(seat: int) -> bool:
 	if not is_active():
 		return false
 	if village.questions_left <= 0:
-		EventBus.question_denied.emit(seat, "sorgu hakkı bitti")
+		EventBus.question_denied.emit(seat, Loc.t("qdeny_no_questions"))
 		return false
 	var c := village.get_character(seat)
 	if not c.is_alive():
 		return false
 	if not c.has_more_claims():
-		EventBus.question_denied.emit(seat, "söyleyecek yeni şeyi yok")
+		EventBus.question_denied.emit(seat, Loc.t("qdeny_no_claims"))
 		return false
 	c.given += 1
 	c.testimony = c.claims[c.given - 1]
@@ -105,7 +105,7 @@ func question(seat: int) -> bool:
 		health -= 1
 		EventBus.player_damaged.emit(1, health)
 		if health <= 0:
-			_end(false, "Uğursuz'un nazarı sürüyü bitirdi")
+			_end(false, Loc.t("lose_jinxed"))
 	return true
 
 
@@ -138,13 +138,13 @@ func end_day(protected: int = -1) -> void:
 
 	# Sürü düştü mü? (canlı iyi <= canlı kurt → kurtlar sürüyü ele geçirdi)
 	if village.alive_good_count() <= village.alive_evil_count():
-		_end(false, "sürü kurtlara yenik düştü")
+		_end(false, Loc.t("lose_overrun"))
 		return
 
 	# Şafak: gün ilerler, sorgu hakkı tazelenir.
 	village.day += 1
 	if village.day > village.max_days:
-		_end(false, "şafaklar tükendi — kurtlar kazandı")
+		_end(false, Loc.t("lose_days"))
 		return
 	village.questions_left = village.q_per_day
 	EventBus.day_started.emit(village.day)
@@ -168,7 +168,7 @@ func execute(seat: int) -> void:
 	# Ermiş (Saint) ayıklandı → anında felaket (§6). Kutsama Suyu varsa felaket
 	# yerine normal yanlış-ayıklama cezası (aşağı düşer).
 	if c.role == &"Saint" and not (RunManager.has_active_run() and RunManager.has_passive(&"kutsama")):
-		_end(false, "Ermiş'i avladın — felaket!")
+		_end(false, Loc.t("lose_saint"))
 		return
 
 	if was_evil:
@@ -187,7 +187,7 @@ func execute(seat: int) -> void:
 			EventBus.player_damaged.emit(dmg, health)
 
 	if health <= 0:
-		_end(false, "can bitti")
+		_end(false, Loc.t("lose_health"))
 		return
 	if _won():
 		_win_with_bonus()
@@ -253,7 +253,7 @@ func hunt(hunter_seat: int, target_seat: int) -> void:
 		EventBus.player_damaged.emit(3, health)
 	EventBus.slayer_used.emit(hunter_seat, target_seat, hit)  # aynı sinyal (ok/ıska banner)
 	if health <= 0:
-		_end(false, "can bitti")
+		_end(false, Loc.t("lose_health"))
 		return
 	if hit and _won():
 		_win_with_bonus()

@@ -8,30 +8,32 @@ extends Control
 
 signal finished
 
-## Adımlar: metin + ok hedefi. İlerleme _advance() içindeki olay eşlemesiyle.
+## Adımlar: metin ANAHTARI + ok hedefi. İlerleme _advance() içindeki olay eşlemesiyle.
+## Const derleme zamanı olduğu için Loc.t burada ÇAĞRILAMAZ — anahtar tutulur,
+## gösterim anında (_goto) Loc.t ile çözülür.
 const STEPS := [
 	{
-		"text": "Sürüne hoş geldin çoban. Bu koyunlardan biri POSTA BÜRÜNMÜŞ KURT.\nBir karaktere tıklayıp SORGULA — herkes bir ifade verir.",
+		"text": "tut_step_1",
 		"target": "cards",
 	},
 	{
-		"text": "İşte bir ifade. İYİLER daima doğru söyler; KURT ise HER ifadesinde YALAN söyler.\nAynı karakteri tekrar sorgulayabilirsin — kurt konuştukça kendini ele verir.",
+		"text": "tut_step_2",
 		"target": "cards",
 	},
 	{
-		"text": "İpuçlarını kaybetme: TAB ile İFADE DEFTERİ'ni aç, sağ tıkla kartlara işaret koy.\nSorgu hakkın bitince GECE butonuyla günü kapat — ama bil: gece kurt avlanır.",
+		"text": "tut_step_3",
 		"target": "day",
 	},
 	{
-		"text": "Kurt, kendisine ÇEMBERDE EN YAKIN koyunu yedi. Ceset asla yalan söylemez:\nölüm yerinden kurdun nerede OLAMAYACAĞINI çıkar. GECE'ye basmadan önce\nbutonun üstünde bekleyerek olası kurbanları görebilirsin.",
+		"text": "tut_step_4",
 		"target": "log",
 	},
 	{
-		"text": "Kurdu bulduğuna inanıyorsan AVLA (E) butonuna bas, sonra kartı seç.\nDikkat: yanlış av sürüne −5 CAN. Emin ol, sonra vur.",
+		"text": "tut_step_5",
 		"target": "exec",
 	},
 	{
-		"text": "Kurdu buldun! Tüm kurtlar avlanınca köy kurtulur.\nBundan sonrası sende çoban — sürünü koru.",
+		"text": "tut_step_6",
 		"target": "",
 	},
 ]
@@ -83,13 +85,13 @@ func _ready() -> void:
 	var head := HBoxContainer.new()
 	vb.add_child(head)
 	var title := Label.new()
-	title.text = "ÇOBAN REHBERİ"
+	title.text = Loc.t("tut_title")
 	title.add_theme_font_size_override("font_size", 15)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
 	var skip := Button.new()
-	skip.text = "Rehberi Geç"
+	skip.text = Loc.t("tut_skip")
 	skip.flat = true
 	skip.add_theme_font_size_override("font_size", 13)
 	skip.add_theme_color_override("font_color", Palette.IVORY.darkened(0.3))
@@ -121,7 +123,7 @@ func _goto(i: int) -> void:
 		return
 	_step = i
 	_timer = 0.0
-	_label.text = STEPS[i]["text"]
+	_label.text = Loc.t(STEPS[i]["text"])
 	# Panel yumuşak giriş: aşağıdan süzül.
 	_panel.modulate.a = 0.0
 	var t := create_tween()
@@ -146,7 +148,7 @@ func _on_executed(_seat: int, was_evil: bool) -> void:
 		_goto(5)
 	elif _step <= 4:
 		# Yanlış ayıklama — uyarıyı tazele (adım değişmez).
-		_label.text = "Bu bir koyundu — sürü −5 can kaybetti! İfadeleri DEFTERden tekrar tara;\nkurt, ifadesi yalanlarla çelişendir. Acele etme."
+		_label.text = Loc.t("tut_wrong_cull")
 
 
 func _process(delta: float) -> void:

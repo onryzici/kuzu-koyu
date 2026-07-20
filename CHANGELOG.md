@@ -1,5 +1,18 @@
 # Güncelleme Notları
 
+## 2026-07-20 (2) — WOLF IN WOOL + İngilizce Dil Desteği
+
+- Oyunun adı artık **WOLF IN WOOL** (proje adı, pencere başlığı, çalıştırılabilir
+  adları `WolfInWool.exe` / `WolfInWool-mac.zip`).
+- **Tam İngilizce yerelleştirme:** yeni `Loc` altyapısı (tr/en anahtar tabloları,
+  ~250 anahtar) + rol adları/yetenekleri, üretilen ifade cümleleri (tüm tipler),
+  omen metinleri, HUD/defter/tooltip/tutorial, harita/dükkân/olaylar/sonuç/
+  kurallar/codex/açılış uyarısı/duraklat menüsü ve muskalar iki dilde.
+- **Ayarlar ekranına Dil / Language seçimi** eklendi (Türkçe ↔ English; arayüz
+  anında, üretilmiş ifadeler yeni köyde değişir; tercih kayda yazılır).
+- Muska adları/açıklamaları ve boss adları yerelleştirme üzerinden çözülür
+  (`RunManager.passive_name/desc`).
+
 ## 2026-07-20 — Büyük İçerik & Cila Güncellemesi
 
 ### Oynanış — yeni mekanikler

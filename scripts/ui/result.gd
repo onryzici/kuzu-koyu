@@ -26,30 +26,30 @@ func _build() -> void:
 	var lines: Array = []
 	match RunManager.last_outcome:
 		Enums.RunOutcome.VILLAGE_WON:
-			title.text = "SÜRÜ KURTARILDI"
+			title.text = Loc.t("result_village_won")
 			title.add_theme_color_override("font_color", Palette.SAFFRON)
 			lines = [
-				"Sürü skoru: %d" % RunManager.last_village_score,
-				"Kazanılan para: +%d" % RunManager.last_coins_awarded,
-				"Toplam skor: %d   ·   Para: %d" % [RunManager.total_score, RunManager.coins],
+				Loc.t("result_village_score") % RunManager.last_village_score,
+				Loc.t("result_coins_awarded") % RunManager.last_coins_awarded,
+				Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins],
 			]
 		Enums.RunOutcome.RUN_WON:
-			title.text = "ALFA SÜRÜSÜ ALT EDİLDİ"
+			title.text = Loc.t("result_run_won")
 			title.add_theme_color_override("font_color", Palette.SAFFRON)
 			lines = [
-				"Son köy skoru: +%d" % RunManager.last_village_score,
-				"Toplam skor: %d   ·   Para: %d" % [RunManager.total_score, RunManager.coins],
-				"Yeni çile açıldı: Çile %d" % (RunManager.max_ascension_unlocked + 1),
+				Loc.t("result_last_village") % RunManager.last_village_score,
+				Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins],
+				Loc.t("result_new_asc") % (RunManager.max_ascension_unlocked + 1),
 			]
 		Enums.RunOutcome.RUN_LOST:
-			title.text = "SEFER DÜŞTÜ"
+			title.text = Loc.t("map_run_lost_title")
 			title.add_theme_color_override("font_color", Palette.BLOOD)
 			lines = [
-				"Sürü kurtlara yem oldu.",
-				"Toplam skor: %d   ·   Para: %d" % [RunManager.total_score, RunManager.coins],
+				Loc.t("result_lost_line"),
+				Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins],
 			]
 		_:
-			title.text = "SONUÇ"
+			title.text = Loc.t("result_fallback")
 
 	# Başlık: vurgun (scale-in).
 	title.pivot_offset = Vector2(size.x * 0.5, 40)
@@ -96,7 +96,7 @@ func _build() -> void:
 		lt.tween_property(pc, "modulate:a", 1.0, 0.35)
 
 	var btn := Button.new()
-	btn.text = "Devam (Enter)"
+	btn.text = Loc.t("result_continue")
 	btn.anchor_left = 0.5
 	btn.anchor_right = 0.5
 	btn.offset_left = -140
@@ -111,7 +111,7 @@ func _build() -> void:
 	# Skoru panoya kopyala: skor + çile + TOHUM — arkadaşın aynı tohumla
 	# (haritadaki "Tohum" girişinden) birebir aynı seferi oynayabilir.
 	var copy_btn := Button.new()
-	copy_btn.text = "Skoru Kopyala"
+	copy_btn.text = Loc.t("result_copy")
 	copy_btn.anchor_left = 0.5
 	copy_btn.anchor_right = 0.5
 	copy_btn.offset_left = -140
@@ -120,9 +120,9 @@ func _build() -> void:
 	copy_btn.offset_bottom = 680
 	ScreenFx.style_button(copy_btn, Palette.COPPER.darkened(0.35), 18)
 	copy_btn.pressed.connect(func():
-		DisplayServer.clipboard_set("Skorum: %d · Çile %d · Tohum: %d — Aynı tohumla dene!" % [
+		DisplayServer.clipboard_set(Loc.t("result_share") % [
 			RunManager.total_score, RunManager.ascension + 1, RunManager.run_seed])
-		copy_btn.text = "Kopyalandı ✔")
+		copy_btn.text = Loc.t("result_copied"))
 	add_child(copy_btn)
 	ScreenFx.slide_in(copy_btn, 0.65 + lines.size() * 0.18)
 

@@ -30,14 +30,15 @@ const BASE_SPECS := [
 ## olmasın. Hepsi üretici bot-bütçe garantisinden geçer (_test_ascension dener).
 const BOSS_SPECS := [
 	# Aç Alfa: gecede 2 av; +1 sorgu ile dengeli (klasik).
+	# boss_name = Loc anahtarı; gösterim yerinde Loc.t ile çözülür (const'ta çağrı olmaz).
 	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "boss": true,
-		"boss_name": "AÇ ALFA", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 4, "max_days": 5},
+		"boss_name": "boss_hungry", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 4, "max_days": 5},
 	# Gölge Sürüsü: 3 kurt (2+alfa), tek av — kalabalık sürü, geniş köy.
 	{"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "boss": true,
-		"boss_name": "GÖLGE SÜRÜSÜ", "drunk_count": 1, "kills_per_night": 1, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 4, "max_days": 5},
+		"boss_name": "boss_shadow", "drunk_count": 1, "kills_per_night": 1, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 4, "max_days": 5},
 	# Sabırsız Alfa: 2 av + kısılmış sorgu; karşılığında +1 şafak.
 	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "boss": true,
-		"boss_name": "SABIRSIZ ALFA", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 3, "max_days": 6},
+		"boss_name": "boss_impatient", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 3, "max_days": 6},
 ]
 
 var active := false
@@ -78,19 +79,31 @@ func start_daily() -> void:
 	is_daily = true
 
 ## Dükkân muskaları (kalıcı pasifler, §4). Etkileri GameState/RunManager'da uygulanır.
+## Ad/açıklama metinleri Loc tablosunda ("passive_<id>_name" / "_desc") — const içinde
+## Loc.t çağrılamaz; gösterim yerleri passive_name()/passive_desc() ile çözer.
 const PASSIVES := {
-	&"zirh": {"name": "Zırh", "desc": "Yanlış av −5 yerine −3 can.", "price": 60},
-	&"kahin": {"name": "Kâhin Boncuğu", "desc": "Gizli Kural her köyde baştan bilinir.", "price": 85},
-	&"ugur": {"name": "Uğur Böceği", "desc": "Her köyde İLK gün +2 sorgu hakkı.", "price": 55},
-	&"kismet": {"name": "Kısmet Tılsımı", "desc": "Her köy kazancına +30 para.", "price": 70},
-	&"hafiza": {"name": "Hafıza Taşı", "desc": "HER gün +1 sorgu hakkı.", "price": 95},
-	&"kalkan": {"name": "Kalkan", "desc": "Her köyde İLK yanlış av hasarsız (bir kez).", "price": 90},
-	&"pusula": {"name": "Pusula", "desc": "Her köyde İLK gece kurt avlanamaz (bir şafak kazan).", "price": 80},
-	&"kutsama": {"name": "Kutsama Suyu", "desc": "Ermiş'i avlarsan felaket olmaz, sadece can cezası.", "price": 75},
-	&"bereket": {"name": "Bereket Boynuzu", "desc": "Maksimum can 10 → 12 (her köyde 12 ile başlarsın).", "price": 85},
-	&"cesaret": {"name": "Cesaret Tılsımı", "desc": "Kurt avladığında o gün +1 sorgu hakkı.", "price": 70},
-	&"sadaka": {"name": "Sadaka Kesesi", "desc": "Dükkân fiyatları %25 ucuz.", "price": 50},
+	&"zirh": {"price": 60},
+	&"kahin": {"price": 85},
+	&"ugur": {"price": 55},
+	&"kismet": {"price": 70},
+	&"hafiza": {"price": 95},
+	&"kalkan": {"price": 90},
+	&"pusula": {"price": 80},
+	&"kutsama": {"price": 75},
+	&"bereket": {"price": 85},
+	&"cesaret": {"price": 70},
+	&"sadaka": {"price": 50},
 }
+
+
+## Muska adı (aktif dilde). Loc anahtarı: passive_<id>_name.
+func passive_name(id: StringName) -> String:
+	return Loc.t("passive_%s_name" % id)
+
+
+## Muska açıklaması (aktif dilde). Loc anahtarı: passive_<id>_desc.
+func passive_desc(id: StringName) -> String:
+	return Loc.t("passive_%s_desc" % id)
 
 
 ## Muskanın bu seferki fiyatı (Sadaka Kesesi ile %25 indirim; kendisi hariç).

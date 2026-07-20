@@ -15,6 +15,7 @@ var settings := {
 	"vol_sfx": 1.0,
 	"fullscreen": true,
 	"tutorial_done": false,  # sefer başı rehber bir kez gösterilir
+	"lang": "tr",            # arayüz dili (tr/en); yeni köyde tam etkinleşir
 }
 
 

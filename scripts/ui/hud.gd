@@ -132,7 +132,7 @@ func _build() -> void:
 	_log_btn.position = Vector2(1392, 634)
 	_log_btn.size = Vector2(62, 62)
 	_log_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	_log_btn.tooltip_text = "İfade Defteri (TAB)"
+	_log_btn.tooltip_text = Loc.t("log_btn_tip")
 	_style_night_button(_log_btn)
 	_log_btn.pressed.connect(func(): log_toggled.emit())
 	add_child(_log_btn)
@@ -163,7 +163,7 @@ func _build() -> void:
 	_overlay.add_child(_overlay_label)
 
 	_restart_btn = Button.new()
-	_restart_btn.text = "Yeni Köy (R)"
+	_restart_btn.text = Loc.t("new_village_btn")
 	_restart_btn.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_restart_btn.position = Vector2(-85, 40)
 	_restart_btn.size = Vector2(170, 44)
@@ -519,34 +519,34 @@ func update_all() -> void:
 		return
 	var v := GameState.village
 	if v.night_rule == Enums.NightRule.FARTHEST:
-		_quest_label.text = "SİSLİ GECE — kurt EN UZAK koyunu avlıyor!" \
-				+ ("  (gecede %d av)" % v.kills_per_night if v.kills_per_night >= 2 else "")
+		_quest_label.text = Loc.t("quest_foggy") \
+				+ (Loc.t("quest_kills_suffix") % v.kills_per_night if v.kills_per_night >= 2 else "")
 	elif v.kills_per_night >= 2:
-		_quest_label.text = "Kurtları bul! Sürü gecede %d kurban veriyor" % v.kills_per_night
+		_quest_label.text = Loc.t("quest_multi") % v.kills_per_night
 	else:
-		_quest_label.text = "Kurtları bul — her gece bir koyun can veriyor"
-	_progress_label.text = "Avlanan: %d / %d Kurt" % [GameState.executed_evil(), GameState.total_evil()]
+		_quest_label.text = Loc.t("quest_basic")
+	_progress_label.text = Loc.t("hunted_progress") % [GameState.executed_evil(), GameState.total_evil()]
 	# Gün + sorgu hakkı pip'leri (● dolu, ○ boş).
 	var pips := ""
 	for i in range(max(v.q_per_day, v.questions_left)):
 		pips += "●" if i < v.questions_left else "○"
-	_day_label.text = "Gün %d/%d   ·   Sorgu: %s" % [v.day, v.max_days, pips]
+	_day_label.text = Loc.t("day_label") % [v.day, v.max_days, pips]
 	# Kanıt: gece kurbanları (Av Düzeni bilinir → her ölüm kurt konumu kısıtıdır).
 	var victims: Array = []
 	for ev in v.night_events:
 		victims.append("#%d" % int(ev["victim"]))
 	_menu_strips[3]["visible"] = not victims.is_empty()
 	if not victims.is_empty():
-		_deaths_label.text = "Kayıplar: %s  (kurda en yakındılar)" % ", ".join(victims)
+		_deaths_label.text = Loc.t("deaths_label") % ", ".join(victims)
 	if RunManager.has_active_run():
-		_village_label.text = "Köy: %d / %d" % [RunManager.current_index + 1, RunManager.nodes.size()]
-		_meta_label.text = "Çile: %d   ·   Para: %d" % [RunManager.ascension + 1, RunManager.coins]
+		_village_label.text = Loc.t("village_label") % [RunManager.current_index + 1, RunManager.nodes.size()]
+		_meta_label.text = Loc.t("meta_label") % [RunManager.ascension + 1, RunManager.coins]
 		_menu_strips[5]["visible"] = true
 	else:
-		_village_label.text = "Sürü: %d hayvan" % v.n
+		_village_label.text = Loc.t("flock_label") % v.n
 		# Bağımsız modda ascension/para satırı gereksiz — gizle (istif kendini toplar).
 		_menu_strips[5]["visible"] = false
-	_score_label.text = "Skor: %d" % GameState.score
+	_score_label.text = Loc.t("score_label") % GameState.score
 	_layout_menu()
 	# Kompozisyon rozetleri _draw'da (sayılar oradan GameState.village'dan okunur).
 	if not _hp_animating:
@@ -559,9 +559,9 @@ func set_execute_mode(on: bool) -> void:
 	if _exec_icon != null:
 		_exec_icon.queue_redraw()
 	if on:
-		flash_banner("AV MODU — bir kart seç (yanlışsa −5 can)", Palette.BLOOD)
+		flash_banner(Loc.t("hunt_mode_on"), Palette.BLOOD)
 	else:
-		flash_banner("Sorgula (sol tık) · işaretle (sağ tık) · G: günü bitir", Palette.SAFFRON)
+		flash_banner(Loc.t("hunt_mode_off"), Palette.SAFFRON)
 
 
 ## Panel çerçeveleri + can küresi (radyal gauge).
@@ -612,9 +612,9 @@ func _draw() -> void:
 			else:
 				# Çözülmemiş: soluk, nabız gibi hafif yanıp sönen "???".
 				var oa := 0.55 + 0.25 * sin(_t * 2.2)
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), "◉ Gizli Kural: ???",
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), Loc.t("omen_unknown"),
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(Palette.SAFFRON.r, Palette.SAFFRON.g, Palette.SAFFRON.b, oa))
-				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), "Kurtların dizilişinde bir desen var — Müneccim'i sorgula ya da çöz.",
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), Loc.t("omen_unknown_hint"),
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
 
 	# Sağ-alt yuvarlak butonların çerçeveleri: görünür GRİ-SİYAH halka + gölge
@@ -760,7 +760,7 @@ func _on_executed(_seat: int, was_evil: bool) -> void:
 	# Kurt avında banner YOK — sinematik (yırtılma + replik) anlatıyor; banner
 	# aynı anda binince ekran karmaşıklaşıyordu. İlerleme etiketi zaten güncellenir.
 	if not was_evil:
-		flash_banner("✘ Yanlış — masum bir koyundu. −5 can", Palette.BLOOD)
+		flash_banner(Loc.t("wrong_cull"), Palette.BLOOD)
 	update_all()
 
 
@@ -785,7 +785,7 @@ func _on_won(score: int) -> void:
 	# Önce son kurtun açılışı + zoom + bölünme sinematiği görünsün, SONRA overlay.
 	await get_tree().create_timer(2.5).timeout
 	_overlay.visible = true
-	_overlay_label.text = "SÜRÜ KURTARILDI\nSkor: %d" % score
+	_overlay_label.text = Loc.t("overlay_won") % score
 	_overlay_label.add_theme_color_override("font_color", Palette.SAFFRON)
 
 
@@ -796,7 +796,7 @@ func _on_lost(reason: String) -> void:
 	if not is_inside_tree():
 		return
 	_overlay.visible = true
-	_overlay_label.text = "SÜRÜ KURTLARA YEM OLDU\n(%s)" % reason
+	_overlay_label.text = Loc.t("overlay_lost") % reason
 	_overlay_label.add_theme_color_override("font_color", Palette.BLOOD)
 
 

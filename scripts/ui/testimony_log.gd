@@ -42,13 +42,13 @@ func _ready() -> void:
 	panel.add_child(vb)
 
 	var title := Label.new()
-	title.text = "İFADE DEFTERİ"
+	title.text = Loc.t("log_title")
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
 	vb.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Kurt HER ifadesinde yalan söyler; cesetler asla söylemez.  (TAB: kapat)"
+	hint.text = Loc.t("log_hint")
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.add_theme_color_override("font_color", Palette.IVORY.darkened(0.25))
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -127,20 +127,20 @@ func refresh() -> void:
 				"color": col,
 			})
 	for ev in v.night_events:
-		var rule_txt := "kurda en yakın koyun" \
+		var rule_txt := Loc.t("night_rule_nearest") \
 				if int(ev.get("rule", Enums.NightRule.NEAREST)) == Enums.NightRule.NEAREST \
-				else "SİS: kurda en uzak koyun"
+				else Loc.t("night_rule_farthest")
 		if int(ev["victim"]) < 0:
 			entries.append({
 				"day": int(ev["day"]), "order": 999,
-				"text": "🪤 Gece %d: kapan #%d'de kapandı — #%d KURT çıktı (yakalandı, sağ)."
+				"text": Loc.t("log_trap_entry")
 						% [int(ev["day"]), int(ev.get("trapped", -1)), int(ev.get("caught", -1))],
 				"color": Palette.SAFFRON,
 			})
 			continue
 		entries.append({
 			"day": int(ev["day"]), "order": 999,
-			"text": "🌙 Gece %d: #%d kurda yem oldu — KESİN İYİYDİ. (Av: %s)"
+			"text": Loc.t("log_night_entry")
 					% [int(ev["day"]), int(ev["victim"]), rule_txt],
 			"color": Color("9db8e8"),
 		})
@@ -148,7 +148,7 @@ func refresh() -> void:
 		if c.executed:
 			entries.append({
 				"day": 998, "order": c.seat,
-				"text": ("🗡 #%d avlandı — KURT çıktı." if c.is_evil() else "🗡 #%d avlandı — İYİYDİ (hata).") % c.seat,
+				"text": (Loc.t("log_cull_wolf") if c.is_evil() else Loc.t("log_cull_good")) % c.seat,
 				"color": Palette.SAFFRON if c.is_evil() else Palette.BLOOD.lightened(0.2),
 			})
 
@@ -159,14 +159,14 @@ func refresh() -> void:
 	for e in entries:
 		if e["day"] < 900 and e["day"] != cur_day:
 			cur_day = e["day"]
-			_add_line("— GÜN %d —" % cur_day, Palette.SAFFRON.darkened(0.1), 15)
+			_add_line(Loc.t("log_day_header") % cur_day, Palette.SAFFRON.darkened(0.1), 15)
 		elif e["day"] == 998 and cur_day != 998:
 			cur_day = 998
-			_add_line("— ÇOBANIN AVLARI —", Palette.SAFFRON.darkened(0.1), 15)
+			_add_line(Loc.t("log_culls_header"), Palette.SAFFRON.darkened(0.1), 15)
 		_add_line(e["text"], e["color"], 14)
 
 	if entries.is_empty():
-		_add_line("Defter boş — henüz kimse sorgulanmadı.", Palette.IVORY.darkened(0.3), 14)
+		_add_line(Loc.t("log_empty"), Palette.IVORY.darkened(0.3), 14)
 
 
 func _add_line(text: String, col: Color, fsize: int) -> void:

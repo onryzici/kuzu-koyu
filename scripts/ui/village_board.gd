@@ -180,11 +180,11 @@ func _connect_events() -> void:
 	EventBus.slayer_used.connect(_on_slayer_used)
 	EventBus.trap_set.connect(func(_tr, target):
 		if _hud != null:
-			_hud.flash_banner("🪤 Kapan #%d'ye kuruldu — gece av oraya düşerse kurt yakalanır" % target, Palette.SAFFRON)
+			_hud.flash_banner(Loc.t("trap_set") % target, Palette.SAFFRON)
 		_refresh_cards())
 	EventBus.trap_sprung.connect(func(trapped, caught):
 		if _hud != null:
-			_hud.flash_banner("🪤 KAPAN KAPANDI! #%d'ye saldıran #%d bir KURTTU — postu düştü!" % [trapped, caught], Palette.SAFFRON)
+			_hud.flash_banner(Loc.t("trap_sprung") % [trapped, caught], Palette.SAFFRON)
 		_recompute_deduction())
 	EventBus.mark_changed.connect(func(_s, _m): _refresh_cards())
 	EventBus.village_won.connect(_on_village_won)
@@ -486,13 +486,14 @@ func _on_card_executed(seat: int, was_evil: bool) -> void:
 
 
 ## Kurt ayıklanınca son bir replik söyler (referans: "Ugh, cheap shot...").
+## Loc anahtarları tutulur (const'ta Loc.t çağrılamaz); gösterimde çözülür.
 const WOLF_LAST_WORDS := [
-	"Ahh... ucuz bir vuruştu bu...",
-	"Beni buldun demek, çoban...",
-	"Kokumu nereden aldın?..",
-	"Sürü... hâlâ bizim...",
-	"Bu daha bitmedi...",
-	"Postum düştü... ama dişlerim kaldı...",
+	"wolf_last_1",
+	"wolf_last_2",
+	"wolf_last_3",
+	"wolf_last_4",
+	"wolf_last_5",
+	"wolf_last_6",
 ]
 
 
@@ -520,7 +521,7 @@ func _play_execute_cinematic(card: CardView) -> void:
 
 	# Son replik: kartın hemen üstünde (ekran içinde kalacak şekilde kelepçeli).
 	var line_x := clampf(card.position.x + card.size.x * 0.5, 190.0, size.x - 190.0)
-	_show_kill_line(WOLF_LAST_WORDS[_fx_rng.randi_range(0, WOLF_LAST_WORDS.size() - 1)],
+	_show_kill_line(Loc.t(WOLF_LAST_WORDS[_fx_rng.randi_range(0, WOLF_LAST_WORDS.size() - 1)]),
 		Vector2(line_x, card.position.y - 30.0))
 
 	await get_tree().create_timer(0.35).timeout
@@ -651,7 +652,7 @@ func _on_night_passed(victims: Array) -> void:
 	await t.finished
 	await get_tree().create_timer(0.8).timeout
 	if _hud != null:
-		_hud.flash_banner("Gece çöktü..." if victims.is_empty() else "Gece çöktü — sürüden ulumalar geliyor...", Color("9db8e8"))
+		_hud.flash_banner(Loc.t("night_fell") if victims.is_empty() else Loc.t("night_fell_howls"), Color("9db8e8"))
 	await get_tree().create_timer(0.55).timeout
 	# Kurbanlar pençelenir.
 	for v in victims:
@@ -665,10 +666,10 @@ func _on_night_passed(victims: Array) -> void:
 				_wilt_grass_near(vc)
 				break
 		if _hud != null:
-			_hud.flash_banner("Kurt saldırdı — #%d can verdi!" % v, Palette.BLOOD)
+			_hud.flash_banner(Loc.t("wolf_attacked") % v, Palette.BLOOD)
 		await get_tree().create_timer(0.9).timeout
 	if victims.is_empty() and _hud != null:
-		_hud.flash_banner("Sürü bu gece sağ çıktı.", Palette.SAFFRON)
+		_hud.flash_banner(Loc.t("flock_survived"), Palette.SAFFRON)
 		await get_tree().create_timer(0.6).timeout
 	# Şafak YAVAŞÇA söker (yıldızlar önce kaybolur, gök en son ağarır).
 	var t2 := create_tween()
@@ -681,7 +682,7 @@ func _on_night_passed(victims: Array) -> void:
 	if _hud != null:
 		_hud.update_all()
 		if GameState.is_active():
-			_hud.flash_banner("GÜN %d — sorgu hakların tazelendi" % GameState.village.day, Palette.SAFFRON)
+			_hud.flash_banner(Loc.t("day_refreshed") % GameState.village.day, Palette.SAFFRON)
 	queue_redraw()
 
 
@@ -1273,12 +1274,12 @@ func _on_card_clicked(seat: int) -> void:
 		var pc := GameState.village.get_character(seat)
 		if not pc.is_alive():
 			if _hud != null:
-				_hud.flash_banner("Ölüler ağıla alınmaz — koruma seç ya da tekrar G'ye bas", Color("9db8e8"))
+				_hud.flash_banner(Loc.t("pen_dead_denied"), Color("9db8e8"))
 			return
 		_protect_mode = false
 		_refresh_cards()
 		if _hud != null:
-			_hud.flash_banner("#%d ağıla alındı — gece çöküyor..." % seat, Color("9db8e8"))
+			_hud.flash_banner(Loc.t("pen_protected") % seat, Color("9db8e8"))
 		GameState.end_day(seat)
 		return
 	# Aktif yetenek (Kılıççı/Avcı) hedefleme modu: sıradaki tık hedef (aynı karta tık = iptal).
@@ -1306,12 +1307,12 @@ func _on_card_clicked(seat: int) -> void:
 			and (c.role == &"Slayer" or c.role == &"Hunter" or c.role == &"Trapper"):
 		_slayer_seat = seat
 		if _hud != null:
-			var vt := "kılıç saplayacağın"
+			var vt := Loc.t("target_verb_slay")
 			if c.role == &"Hunter":
-				vt = "ok atacağın"
+				vt = Loc.t("target_verb_hunt")
 			elif c.role == &"Trapper":
-				vt = "kapan kuracağın"
-			_hud.flash_banner("%s — %s kartı seç (iptal: tekrar tık)" % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON)
+				vt = Loc.t("target_verb_trap")
+			_hud.flash_banner(Loc.t("target_pick") % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON)
 		_refresh_cards()
 		return
 	# V2: tık = SORGU (1 hak harcar; karakter sıradaki ifadesini verir).
@@ -1331,8 +1332,8 @@ func _on_end_day() -> void:
 		if _hud != null:
 			var extra := ""
 			if GameState.village.questions_left > 0:
-				extra = "  (%d sorgu hakkın yanacak!)" % GameState.village.questions_left
-			_hud.flash_banner("AĞIL — koruyacağın kartı seç · korumasız gece: tekrar GECE/G%s" % extra, Color("9db8e8"))
+				extra = Loc.t("pen_qwarn") % GameState.village.questions_left
+			_hud.flash_banner(Loc.t("pen_prompt") % extra, Color("9db8e8"))
 		_refresh_cards()  # mavi koruma halesi
 		return
 	_protect_mode = false
@@ -1345,9 +1346,9 @@ func _on_slayer_used(_slayer_seat_arg: int, target: int, hit: bool) -> void:
 	if _hud == null:
 		return
 	if hit:
-		_hud.flash_banner("İsabet! Kurt vuruldu ve öldü.", Palette.SAFFRON)
+		_hud.flash_banner(Loc.t("slayer_hit"), Palette.SAFFRON)
 	else:
-		_hud.flash_banner("Iska — #%d bir kurt değildi." % target, Palette.BLOOD)
+		_hud.flash_banner(Loc.t("slayer_miss") % target, Palette.BLOOD)
 
 
 func _on_card_right_clicked(seat: int) -> void:
@@ -1447,7 +1448,7 @@ func _play_lose_cinematic() -> void:
 			card.animate_reveal()
 			AudioManager.sfx("cull_good", -10.0, 0.55)
 			await get_tree().create_timer(0.55).timeout
-	_show_kill_line("Sürü artık bizim, çoban...", Vector2(size.x * 0.5, size.y * 0.24))
+	_show_kill_line(Loc.t("wolves_win_line"), Vector2(size.x * 0.5, size.y * 0.24))
 	await get_tree().create_timer(2.0).timeout
 	_cinematic = false
 

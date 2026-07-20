@@ -85,8 +85,91 @@ const ABILITY := {
 	&"Demon": "Sürünün baş belası — Alfa Kurt. Yalan söyler, koyun postunda gizlenir.",
 }
 
+# İngilizce tematik adlar (koyun/kurt/Anadolu köyü havası korunur).
+const EN := {
+	# Sürü (Villager) — iyi, doğru söyleyen köylüler.
+	&"Judge": "Shepherd",
+	&"Confessor": "Preacher",
+	&"Oracle": "Fortune Granny",
+	&"Dreamer": "Dreamer",
+	&"Knight": "Watchdog",
+	&"Sentry": "Night Watch",
+	&"Scout": "Tracker",
+	&"Enlightened": "Old Ram",
+	&"Architect": "Miller",
+	&"Lover": "Lovestruck",
+	&"Gossip": "Gossip",
+	&"Healer": "Healer",
+	&"Weaver": "Weaver",
+	&"Midwife": "Midwife",
+	&"Milkmaid": "Milkmaid",
+	&"Crier": "Town Crier",
+	&"Beekeeper": "Beekeeper",
+	&"Sheepdog": "Sheepdog",
+	&"Shearer": "Shearer",
+	&"Drummer": "Drummer",
+	&"Welldigger": "Welldigger",
+	&"Beadcounter": "Bead Counter",
+	&"Skittish": "Skittish Lamb",
+	&"Tailor": "Tailor",
+	&"Mirrorwright": "Mirrorwright",
+	&"Trapper": "Trapper",
+	&"Astrologer": "Stargazer",
+	&"Slayer": "Swordsman",
+	&"Hunter": "Hunter",
+	# Outcast (parya) — iyi ama tuzak.
+	&"Saint": "Saint",
+	&"Jinxed": "Jinxed",
+	&"Baker": "Baker",
+	# Kurtlar (Evil).
+	&"Minion": "Wolf",
+	&"Demon": "Alpha Wolf",
+}
+
+# İngilizce yetenek açıklamaları (tooltip).
+const ABILITY_EN := {
+	&"Judge": "Sniffs a card and tells whether it is wolf or sheep.",
+	&"Confessor": "Reads a card's soul: wolf or sheep.",
+	&"Oracle": "Points at two cards and tells how many of them are wolves.",
+	&"Dreamer": "Sees three cards in a dream; reports how many are wolves.",
+	&"Knight": "Barks out how many of its two neighbors are wolves.",
+	&"Sentry": "On watch; reports the wolf count among its two neighbors.",
+	&"Scout": "Measures how many steps away the nearest wolf is.",
+	&"Enlightened": "Senses which direction the nearest wolf lies in.",
+	&"Architect": "Compares the wolf counts in the two halves of the circle.",
+	&"Lover": "Feels whether its two neighbors stand on the same side.",
+	&"Gossip": "Spreads word on whether two villagers share the same side.",
+	&"Healer": "Takes a card's pulse: wolf or sheep.",
+	&"Weaver": "Weaves the thread of two villagers: same side or not.",
+	&"Midwife": "Points at four cards; tells how many of them are wolves.",
+	&"Milkmaid": "Knows the four neighbors on her milk route (two on each side); tells how many are wolves.",
+	&"Crier": "Announces the three cards ahead of him clockwise: how many are wolves.",
+	&"Beekeeper": "Hears from his bees how many wolves sit among the two cards two steps away.",
+	&"Sheepdog": "Sniffs its two neighbors; growls out how many are wolves.",
+	&"Shearer": "Like weighing wool: compares the wolf counts in the two halves of the circle.",
+	&"Drummer": "Hears from his drum's echo how many steps away the nearest wolf is.",
+	&"Welldigger": "Looks at two villagers' reflections in the well: same side or not.",
+	&"Beadcounter": "Counts his beads over four cards: says whether the wolf count among them is ODD or EVEN (not the exact number).",
+	&"Skittish": "Can't quite see the wolf but its trembling measures: says whether the nearest wolf is FARTHER or CLOSER than K steps.",
+	&"Tailor": "Paces out the wolves' gap: knows exactly how many steps apart the two nearest wolves sit on the circle.",
+	&"Mirrorwright": "His mirror shows only the seat DIRECTLY OPPOSITE: wolf or sheep.",
+	&"Trapper": "ACTIVE (one use): sets a TRAP on a seat for the night. If the hunt lands there, the victim lives; the attacking wolf is caught and unmasked.",
+	&"Jinxed": "GOOD and always TRUTHFUL — but hexed: every time you question them, the flock loses 1 heart. Knowledge or blood?",
+	&"Astrologer": "Reads the stars; reveals the wolves' Hidden Rule (their pattern).",
+	&"Slayer": "ACTIVE (one use): drives a sword into a card. If it's the Alpha Wolf, it dies; otherwise the blow is wasted.",
+	&"Hunter": "ACTIVE (one use): shoots a card. A wolf/alpha dies; shoot a sheep and lose 3 hearts.",
+	&"Saint": "A blessed innocent. GOOD, but CULLING them brings disaster — do not touch!",
+	&"Baker": "A loyal villager; vouches for their own identity.",
+	&"Minion": "A wolf slipped into the flock. Always lies.",
+	&"Demon": "The bane of the flock — the Alpha Wolf. Lies, and hides in sheep's clothing.",
+}
+
 static func display(role: StringName) -> String:
+	if Loc.lang == "en":
+		return EN.get(role, TR.get(role, String(role)))
 	return TR.get(role, String(role))
 
 static func ability(role: StringName) -> String:
+	if Loc.lang == "en":
+		return ABILITY_EN.get(role, ABILITY.get(role, ""))
 	return ABILITY.get(role, "")

@@ -9,6 +9,7 @@ var _root: Control
 var _open := false
 var _rules_overlay: Control = null      ## ESC menüsünden açılan kurallar (overlay)
 var _settings_overlay: Control = null   ## ESC menüsünden açılan ayarlar (overlay)
+var _loc_nodes: Array = []              ## [node, loc_anahtarı] — menü açılırken tazelenir
 
 
 func _ready() -> void:
@@ -45,23 +46,26 @@ func _build() -> void:
 	_root.add_child(box)
 
 	var title := Label.new()
-	title.text = "DURAKLADI"
+	title.text = Loc.t("pause_title")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
 	box.add_child(title)
+	_loc_nodes.append([title, "pause_title"])
 
-	_add_button(box, "Devam", _resume)
-	_add_button(box, "Kurallar", _open_rules)
-	_add_button(box, "Ayarlar", _open_settings)
-	_add_button(box, "Tam Ekran (F11)", _toggle_fullscreen)
-	_add_button(box, "Ana Menü", _to_main)
-	_add_button(box, "Çıkış", func(): get_tree().quit())
+	_add_button(box, "pause_resume", _resume)
+	_add_button(box, "menu_rules", _open_rules)
+	_add_button(box, "menu_settings", _open_settings)
+	_add_button(box, "pause_fullscreen", _toggle_fullscreen)
+	_add_button(box, "pause_main", _to_main)
+	_add_button(box, "pause_quit", func(): get_tree().quit())
 
 
-func _add_button(box: VBoxContainer, text: String, cb: Callable) -> void:
+## key = Loc anahtarı; menü her açılışta tazelenir (dil değişmiş olabilir).
+func _add_button(box: VBoxContainer, key: String, cb: Callable) -> void:
 	var b := Button.new()
-	b.text = text
+	b.text = Loc.t(key)
+	_loc_nodes.append([b, key])
 	b.custom_minimum_size = Vector2(300, 52)
 	b.add_theme_font_size_override("font_size", 22)
 	for state in ["normal", "hover", "pressed"]:
@@ -116,6 +120,10 @@ func _open_settings() -> void:
 
 func _toggle_menu() -> void:
 	_open = not _open
+	if _open:
+		# Dil, menü kapalıyken değişmiş olabilir — metinleri açarken tazele.
+		for e in _loc_nodes:
+			e[0].text = Loc.t(e[1])
 	_root.visible = _open
 	get_tree().paused = _open
 

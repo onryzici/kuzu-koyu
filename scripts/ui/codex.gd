@@ -6,18 +6,19 @@ extends Control
 
 var overlay_mode := false
 
-# Gruplama: başlık -> rol id listesi (+ Sarhoş kavramı ayrı kart).
+# Gruplama: başlık Loc anahtarı -> rol id listesi (+ Sarhoş kavramı ayrı kart).
+# const içinde Loc.t çağrılamaz — başlıklar gösterim anında çözülür.
 const GROUPS := [
-	["SÜRÜ — Bilgi Verenler (İYİ, daima doğru söyler)", [
+	["codex_group_flock", [
 		&"Judge", &"Confessor", &"Healer", &"Oracle", &"Dreamer", &"Midwife",
 		&"Knight", &"Sentry", &"Milkmaid", &"Beekeeper", &"Crier",
 		&"Scout", &"Enlightened", &"Architect", &"Lover", &"Gossip", &"Weaver",
 		&"Sheepdog", &"Shearer", &"Drummer", &"Welldigger",
 		&"Beadcounter", &"Skittish", &"Tailor", &"Mirrorwright",
 	]],
-	["ÖZEL & AKTİF", [&"Astrologer", &"Slayer", &"Hunter", &"Trapper"]],
-	["PARYALAR — İyi ama tuzak (kompozisyonda ilan edilir)", [&"Saint", &"Jinxed"]],
-	["KURTLAR — Kötü (koyun postunda, daima yalan)", [&"Minion", &"Demon"]],
+	["codex_group_special", [&"Astrologer", &"Slayer", &"Hunter", &"Trapper"]],
+	["codex_group_outcasts", [&"Saint", &"Jinxed"]],
+	["codex_group_wolves", [&"Minion", &"Demon"]],
 ]
 
 const PORTRAIT_SIZE := Vector2(86, 108)
@@ -34,7 +35,7 @@ func _build() -> void:
 		add_child(ScreenFx.new())
 
 	var title := Label.new()
-	title.text = "KARAKTERLER"
+	title.text = Loc.t("codex_title")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
@@ -64,7 +65,7 @@ func _build() -> void:
 	var card_i := 0
 	for group in GROUPS:
 		var head := Label.new()
-		head.text = group[0]
+		head.text = Loc.t(group[0])
 		head.add_theme_font_size_override("font_size", 21)
 		head.add_theme_color_override("font_color", Palette.SAFFRON)
 		vbox.add_child(head)
@@ -85,8 +86,8 @@ func _build() -> void:
 			# ROL AÇILIMI: çile eşiği aşılmamış roller gizemli/kilitli kart olur.
 			var tier: int = VillageGenerator.ROLE_TIERS.get(id, 0)
 			if tier > RunManager.max_ascension_unlocked:
-				_add_card(grid, "??? — Kilitli",
-					"Bu karakter Çile %d seferlerinde sürüye katılır. Alfa Kurt'u alt edip çileyi yükselt." % (tier + 1),
+				_add_card(grid, Loc.t("codex_locked_name"),
+					Loc.t("codex_locked_desc") % (tier + 1),
 					null, Color(0.45, 0.42, 0.40), card_i)
 				card_i += 1
 				continue
@@ -94,9 +95,9 @@ func _build() -> void:
 				PortraitMap.texture(id), _role_color(id), card_i)
 			card_i += 1
 		# Sarhoş kavramı (sabit rol değil) paryalar grubuna ekle — portresi gizli (?).
-		if String(group[0]).begins_with("PARYALAR"):
-			_add_card(grid, "Sarhoş",
-				"Kendini bir köylü sanır; köylü gibi görünür ama tanıklığı yanlış olabilir. Hangisi olduğu gizli.",
+		if String(group[0]) == "codex_group_outcasts":
+			_add_card(grid, Loc.t("codex_drunk_name"),
+				Loc.t("codex_drunk_desc"),
 				null, Palette.SAFFRON, card_i)
 			card_i += 1
 
@@ -105,14 +106,14 @@ func _build() -> void:
 		vbox.add_child(gap)
 
 	var foot := Label.new()
-	foot.text = "Yeni kartlar deste açıldıkça ve çile katmanlarında devreye girer."
+	foot.text = Loc.t("codex_foot")
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.add_theme_font_size_override("font_size", 15)
 	foot.add_theme_color_override("font_color", Palette.BRONZE.lightened(0.15))
 	vbox.add_child(foot)
 
 	var back := Button.new()
-	back.text = "Geri (Esc)"
+	back.text = Loc.t("ui_back")
 	back.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	back.position = Vector2(-260, -76)
 	back.size = Vector2(220, 50)

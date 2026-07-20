@@ -27,20 +27,21 @@ func _build() -> void:
 	add_child(vb)
 
 	var title := Label.new()
-	title.text = "AYARLAR"
+	title.text = Loc.t("settings_title")
 	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(title)
 
 	var s: Dictionary = SaveManager.settings
-	_add_slider(vb, "Ana ses", "vol_master", s.get("vol_master", 0.9))
-	_add_slider(vb, "Müzik", "vol_music", s.get("vol_music", 0.6))
-	_add_slider(vb, "Efektler", "vol_sfx", s.get("vol_sfx", 1.0))
+	_add_slider(vb, Loc.t("settings_master"), "vol_master", s.get("vol_master", 0.9))
+	_add_slider(vb, Loc.t("settings_music"), "vol_music", s.get("vol_music", 0.6))
+	_add_slider(vb, Loc.t("settings_sfx"), "vol_sfx", s.get("vol_sfx", 1.0))
 	_add_fullscreen_toggle(vb, s.get("fullscreen", false))
+	_add_language_row(vb)
 
 	var back := Button.new()
-	back.text = "Geri (Esc)"
+	back.text = Loc.t("ui_back")
 	back.add_theme_font_size_override("font_size", 22)
 	back.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	back.position = Vector2(-260, -76)
@@ -88,7 +89,7 @@ func _add_slider(parent: Node, label_text: String, key: String, value: float) ->
 
 func _add_fullscreen_toggle(parent: Node, value: bool) -> void:
 	var cb := CheckButton.new()
-	cb.text = "Tam ekran"
+	cb.text = Loc.t("settings_fullscreen")
 	cb.button_pressed = value
 	cb.add_theme_font_size_override("font_size", 20)
 	cb.add_theme_color_override("font_color", Palette.IVORY)
@@ -100,6 +101,46 @@ func _add_fullscreen_toggle(parent: Node, value: bool) -> void:
 		)
 	)
 	parent.add_child(cb)
+
+
+## Dil seçimi: Türkçe ↔ English düğmesi + küçük bilgi notu. Düğmeye basınca
+## Loc.set_lang ile geçilir (ayara da yazar) ve ekran yeniden kurulur — tüm
+## metinler yeni dilde gelir. Üretilmiş ifadeler yeni köyde dile geçer (Loc notu).
+func _add_language_row(parent: Node) -> void:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+
+	var btn := Button.new()
+	btn.text = Loc.t("settings_lang_btn")
+	btn.add_theme_font_size_override("font_size", 20)
+	btn.custom_minimum_size = Vector2(560, 44)
+	for st in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Palette.CRIMSON.darkened(0.45) if st == "normal" else Palette.CRIMSON.darkened(0.25)
+		sb.set_corner_radius_all(10)
+		sb.set_content_margin_all(8)
+		btn.add_theme_stylebox_override(st, sb)
+	btn.add_theme_color_override("font_color", Palette.IVORY)
+	btn.pressed.connect(_toggle_language)
+	row.add_child(btn)
+
+	var note := Label.new()
+	note.text = Loc.t("settings_lang_note")
+	note.add_theme_font_size_override("font_size", 13)
+	note.add_theme_color_override("font_color", Palette.IVORY.darkened(0.25))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(560, 0)
+	row.add_child(note)
+
+
+func _toggle_language() -> void:
+	Loc.set_lang("en" if Loc.lang == "tr" else "tr")
+	# Ekranı yeniden kur: eski kontroller gitsin, metinler yeni dilde gelsin.
+	# (Hem sahne hem overlay modunda çalışır — sahne yeniden yüklemeye gerek yok.)
+	for c in get_children():
+		c.queue_free()
+	_build()
 
 
 func _close() -> void:

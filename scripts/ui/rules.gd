@@ -6,39 +6,20 @@ extends Control
 
 var overlay_mode := false        ## true: ESC menüsü üstünde açıldı (kapat = queue_free)
 
-## Bölümler: [ikon, başlık, bbcode gövde]. Panel kartlar bu veriden kurulur.
+## Bölümler: [ikon, başlık anahtarı, bbcode gövde anahtarı]. Metinler Loc
+## tablosundadır (const içinde Loc.t çağrılamaz); paneller kurulurken çözülür.
+## bbcode etiketleri iki dilde de korunur.
 const SECTIONS := [
-	["◎", "Amaç",
-		"Sürüye [color=#b3272d]kurtlar[/color] sızdı — koyun postuna büründüler, sahte rollerle aranızda dolaşıyorlar. Sen çobansın: [b]gündüz sorgula, geceden önce kurtları bul ve avla.[/b] Çünkü her gece kurt, sürüden [color=#b3272d]bir koyun avlar[/color]. [color=#b3272d]10 canın[/color] var; her yanlış av [color=#b3272d]−5 can[/color]."],
-	["☾", "Gün & Gece Döngüsü",
-		"• [b]GÜNDÜZ:[/b] Günde [color=#e4a72e]3 sorgu hakkın[/color] var. Bir karaktere tıkla → bir ifade verir. [b]Aynı kişiyi tekrar sorgulayabilirsin[/b] — herkesin söyleyecek 2 sözü var.
-• [b]GECE[/b] (GECE butonu ya da G): kurt avlanır, bir koyun ölür. Şafakta sorgu hakların tazelenir.
-• [b]Süre:[/b] Şafak sayısı sınırlı (sol panelde \"Gün X/Y\"). Sürü kurt sayısına inerse ya da şafaklar tükenirse [color=#b3272d]kaybedersin[/color]."],
-	["✦", "Temel Kural — Yalan & Kanıt",
-		"• [color=#8fe0a0]Koyunlar[/color] [b]DAİMA doğru[/b] söyler.
-• [color=#b3272d]Kurtlar[/color] [b]DAİMA yalan[/b] söyler — her ifadesinde! [b]Yalancıyı konuştur:[/b] kurt konuştukça kendini ele verir.
-• [b]Cesetler yalan söylemez:[/b] Av Düzeni bellidir — [i]kurt, kendine en yakın canlı koyunu avlar[/i] (eşitlikte küçük numara). Her ölüm, kurdun YERİ hakkında kesin bir kanıttır. Ölüm yerlerinden kurdu nirengi yap!
-[b]Kanıt her zaman tutar[/b] — her köy, sorgu bütçen içinde saf mantıkla çözülebilir; tahmine mecbur kalmazsın."],
-	["❖", "Eylemler",
-		"• [b]Sorgula[/b] (sol tık): 1 hak harcar, bir ifade alırsın.
-• [b]İşaretle[/b] (sağ tık ya da 1–5): şüpheni karta not et. ▲iyi ◆şüpheli ✖kurt !soru.
-• [b]Ayıkla[/b] (E, sonra karta tık): kurt sandığını sürüden at. Doğruysa [color=#8fe0a0]✔[/color], yanlışsa [color=#b3272d]−5 can[/color]. Günün her anında yapabilirsin.
-• [b]Günü Bitir[/b] (GECE / G): İLK basış [color=#9db8e8]AĞIL[/color]'ı açar — bir kartı seçip o gece [b]korursun[/b] (kurt onu avlayamaz, en yakın BAŞKA koyunu arar). Korumasız gece için tekrar bas. Koruma da kanıttır: kimi koruduğun kayda geçer, ölümler yine iz bırakır."],
-	["▤", "Kompozisyon",
-		"Sağ üstte köyde kaç [color=#a9713a]Koyun[/color] · [color=#e4a72e]Parya[/color] · [color=#b3272d]Kurt[/color] · Alfa olduğu baştan yazar. Sürpriz yok — adalet için sayılar bilinir. Kefilli (altın çerçeveli) kartlar [b]kesin iyidir[/b]."],
-	["✧", "Özel Roller",
-		"• [color=#e4a72e]Müneccim[/color]: sorgularsan [b]Gizli Kural[/b]'ı öğrenirsin.
-• [color=#e4a72e]Kılıççı[/color] (aktif, tek kullanım): karta tıkla → hedef seç; [b]Alfa Kurt[/b] ise ölür, değilse boşa gider.
-• [color=#e4a72e]Avcı[/color] (aktif, tek kullanım): hedefi vurur — herhangi bir [b]kurt[/b] ise ölür, [b]koyun[/b] vurursan −3 can."],
-	["!", "Paryalar (Tuzaklar)",
-		"• [color=#b3272d]Ermiş[/color]: İYİdir ama [b]avlarsan felaket[/b] — anında kaybedersin. Sakın dokunma.
-• [color=#b3272d]Sarhoş[/color]: iyidir ama kendini köylü sanır; ifadeleri [b]yanlış olabilir[/b]. Köylü gibi görünür — kompozisyon + çelişkiden çöz."],
-	["◉", "Gizli Kural (Omen)",
-		"Kurtların çemberdeki yerleşimi gizli bir desene uyar (tek/çift parite · aynalı · dağınık · bitişik yay). Kişiyi değil, [b]deseni[/b] çözersin. Müneccim'i sorgulayınca öğrenirsin."],
-	["➤", "Sefer & Dükkân",
-		"Köyleri geç, sonda [color=#b3272d]Alfa sürüsü[/color] boss köyünü yen (gecede [b]2 av[/b]!). Kazanınca [color=#ffd479]para[/color] → [b]dükkânda kalıcı muska[/b] al (Zırh, Pusula, Hafıza Taşı...). [b]Çile[/b] = her seferden sonra açılan zorluk katmanı (daha az sorgu, daha çok kurt, omen zorunlu...)."],
-	["★", "Skor",
-		"Kurt başına +100 · kalan can ×10 · [b]erken bitirme[/b] (kalan şafak ×25) · kurtarılan koyun ×5. Hız ödüllendirilir."],
+	["◎", "rules_s1_title", "rules_s1_body"],
+	["☾", "rules_s2_title", "rules_s2_body"],
+	["✦", "rules_s3_title", "rules_s3_body"],
+	["❖", "rules_s4_title", "rules_s4_body"],
+	["▤", "rules_s5_title", "rules_s5_body"],
+	["✧", "rules_s6_title", "rules_s6_body"],
+	["!", "rules_s7_title", "rules_s7_body"],
+	["◉", "rules_s8_title", "rules_s8_body"],
+	["➤", "rules_s9_title", "rules_s9_body"],
+	["★", "rules_s10_title", "rules_s10_body"],
 ]
 
 
@@ -54,7 +35,7 @@ func _build() -> void:
 		add_child(ScreenFx.new())
 
 	var title := Label.new()
-	title.text = "NASIL OYNANIR"
+	title.text = Loc.t("rules_title")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 40)
 	title.add_theme_color_override("font_color", Palette.SAFFRON)
@@ -65,7 +46,7 @@ func _build() -> void:
 	ScreenFx.slide_in(title, 0.02, Vector2(0, -26))
 
 	var subtitle := Label.new()
-	subtitle.text = "— kurtlar yalan söyler; cesetler ve kanıt asla —"
+	subtitle.text = Loc.t("rules_subtitle")
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 16)
 	subtitle.add_theme_color_override("font_color", Palette.COPPER.lightened(0.2))
@@ -94,7 +75,7 @@ func _build() -> void:
 
 	for i in range(SECTIONS.size()):
 		var sec: Array = SECTIONS[i]
-		var panel := _section_panel(sec[0], sec[1], sec[2])
+		var panel := _section_panel(sec[0], Loc.t(sec[1]), Loc.t(sec[2]))
 		vbox.add_child(panel)
 		# Konteyner pozisyonu yönettiği için yalnız alfa animasyonu (yarış olmasın).
 		panel.modulate.a = 0.0
@@ -103,14 +84,14 @@ func _build() -> void:
 		t.tween_property(panel, "modulate:a", 1.0, 0.35)
 
 	var quote := Label.new()
-	quote.text = "Kurtlar yalan söyler — ama cesetler ve kanıt asla."
+	quote.text = Loc.t("rules_quote")
 	quote.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	quote.add_theme_font_size_override("font_size", 16)
 	quote.add_theme_color_override("font_color", Palette.BRONZE.lightened(0.15))
 	vbox.add_child(quote)
 
 	var back := Button.new()
-	back.text = "Geri (Esc)"
+	back.text = Loc.t("ui_back")
 	back.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	back.position = Vector2(-260, -76)
 	back.size = Vector2(220, 50)

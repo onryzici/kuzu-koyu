@@ -6,59 +6,61 @@ extends Control
 
 ## Her olay: id, title, desc, choices: [{text, cost (para), resolve: Callable-adı}].
 ## resolve string'i _resolve() içindeki match'e bağlanır (data + küçük hook, §14 ruhu).
+## NOT: const içinde Loc.t ÇAĞRILAMAZ — title/desc/text alanları Loc ANAHTARIdır;
+## gösterim ve sonuç anında Loc.t ile çözülür.
 const EVENTS := [
 	{
 		"id": &"yarali_gezgin",
-		"title": "YARALI GEZGİN",
-		"desc": "Patikada bacağı kanayan bir gezgin oturuyor. Gözlerinde korku:\n\"Sürünün oradan geliyorum... İçlerinde KURT var, gördüm. Yaramı sararsan bildiklerimi anlatırım.\"",
+		"title": "event_yarali_gezgin_title",
+		"desc": "event_yarali_gezgin_desc",
 		"choices": [
-			{"text": "Yarasını sar (20 altın)", "cost": 20, "act": &"gezgin_yardim"},
-			{"text": "Yoluna devam et", "cost": 0, "act": &"gezgin_gec"},
+			{"text": "event_yarali_gezgin_c1", "cost": 20, "act": &"gezgin_yardim"},
+			{"text": "event_yarali_gezgin_c2", "cost": 0, "act": &"gezgin_gec"},
 		],
 	},
 	{
 		"id": &"eski_mezarlik",
-		"title": "ESKİ MEZARLIK",
-		"desc": "Çalıların ardında çökük mezar taşları. Birinin dibi yeni kazılmış gibi...\nToprağın altından soluk bir parıltı vuruyor. Ama buranın nazarına bulaşmak hayra alamet değil.",
+		"title": "event_eski_mezarlik_title",
+		"desc": "event_eski_mezarlik_desc",
 		"choices": [
-			{"text": "Mezarı kaz", "cost": 0, "act": &"mezar_kaz"},
-			{"text": "Saygıyla geç, bir taş bırak", "cost": 0, "act": &"mezar_gec"},
+			{"text": "event_eski_mezarlik_c1", "cost": 0, "act": &"mezar_kaz"},
+			{"text": "event_eski_mezarlik_c2", "cost": 0, "act": &"mezar_gec"},
 		],
 	},
 	{
 		"id": &"kahin_cadiri",
-		"title": "KÂHİNİN ÇADIRI",
-		"desc": "Yol kenarında yamalı bir çadır; içeriden tütsü dumanı sızıyor. Yaşlı kadın boncuklarını sayıyor:\n\"Lanetin bir DÜZENİ var evlat. Gümüşünü ver, düzenini söyleyeyim.\"",
+		"title": "event_kahin_cadiri_title",
+		"desc": "event_kahin_cadiri_desc",
 		"choices": [
-			{"text": "Fal baktır (15 altın)", "cost": 15, "act": &"fal_bak"},
-			{"text": "\"Boncuğa inanmam\" de, geç", "cost": 0, "act": &"fal_gec"},
+			{"text": "event_kahin_cadiri_c1", "cost": 15, "act": &"fal_bak"},
+			{"text": "event_kahin_cadiri_c2", "cost": 0, "act": &"fal_gec"},
 		],
 	},
 	{
 		"id": &"kayip_kuzu",
-		"title": "KAYIP KUZU",
-		"desc": "Yol kenarında ağlayan bir çocuk: \"Kuzum kayboldu... Çalıların oradan kurt sesi geldi.\"\nHava kararmak üzere. Karar senin çoban.",
+		"title": "event_kayip_kuzu_title",
+		"desc": "event_kayip_kuzu_desc",
 		"choices": [
-			{"text": "Kuzuyu aramaya çık", "cost": 0, "act": &"kuzu_ara"},
-			{"text": "\"Üzgünüm evlat\" de, yürü", "cost": 0, "act": &"kuzu_gec"},
+			{"text": "event_kayip_kuzu_c1", "cost": 0, "act": &"kuzu_ara"},
+			{"text": "event_kayip_kuzu_c2", "cost": 0, "act": &"kuzu_gec"},
 		],
 	},
 	{
 		"id": &"degirmen_yangini",
-		"title": "DEĞİRMEN YANGINI",
-		"desc": "Tepedeki değirmenden duman yükseliyor; değirmenci avazı çıktığı kadar bağırıyor.\nSöndürmek için köyden kova ve bez almak gerek — bedava değil.",
+		"title": "event_degirmen_yangini_title",
+		"desc": "event_degirmen_yangini_desc",
 		"choices": [
-			{"text": "Malzeme al, yangına koş (15 altın)", "cost": 15, "act": &"yangin_sondur"},
-			{"text": "Uzaktan izle", "cost": 0, "act": &"yangin_izle"},
+			{"text": "event_degirmen_yangini_c1", "cost": 15, "act": &"yangin_sondur"},
+			{"text": "event_degirmen_yangini_c2", "cost": 0, "act": &"yangin_izle"},
 		],
 	},
 	{
 		"id": &"bereket_sunagi",
-		"title": "BEREKET SUNAĞI",
-		"desc": "Dut ağacının altında yosun tutmuş eski bir sunak. Üzerinde kurumuş çiçekler,\nadak mumları... Buraya bir şey bırakanın eli boş dönmediği söylenir.",
+		"title": "event_bereket_sunagi_title",
+		"desc": "event_bereket_sunagi_desc",
 		"choices": [
-			{"text": "Adak sun (25 altın)", "cost": 25, "act": &"adak_sun"},
-			{"text": "Sessizce dua et", "cost": 0, "act": &"dua_et"},
+			{"text": "event_bereket_sunagi_c1", "cost": 25, "act": &"adak_sun"},
+			{"text": "event_bereket_sunagi_c2", "cost": 0, "act": &"dua_et"},
 		],
 	},
 ]
@@ -88,13 +90,13 @@ func _build() -> void:
 	add_child(fx)
 
 	var head := _label(Vector2(60, 44), 40, Palette.SAFFRON)
-	head.text = "OLAY"
+	head.text = Loc.t("event_title")
 	ScreenFx.slide_in(head, 0.02, Vector2(-60, 0))
 
 	_coins_label = _label(Vector2(1260, 48), 26, Color("ffd479"))
 	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_coins_label.size = Vector2(300, 34)
-	_coins_label.text = "Para: %d" % RunManager.coins
+	_coins_label.text = Loc.t("ui_coins") % RunManager.coins
 
 	# Olay kartı: bordersız koyu panel + yumuşak gölge (yeni panel dili).
 	var panel := PanelContainer.new()
@@ -122,13 +124,13 @@ func _build() -> void:
 	panel.add_child(vb)
 
 	_title = Label.new()
-	_title.text = _event["title"]
+	_title.text = Loc.t(String(_event["title"]))
 	_title.add_theme_font_size_override("font_size", 30)
 	_title.add_theme_color_override("font_color", Palette.SAFFRON)
 	vb.add_child(_title)
 
 	_desc = Label.new()
-	_desc.text = _event["desc"]
+	_desc.text = Loc.t(String(_event["desc"]))
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_desc.custom_minimum_size = Vector2(600, 0)
 	_desc.add_theme_font_size_override("font_size", 17)
@@ -138,12 +140,12 @@ func _build() -> void:
 	for ch in _event["choices"]:
 		var b := Button.new()
 		var cost: int = ch["cost"]
-		b.text = String(ch["text"])
+		b.text = Loc.t(String(ch["text"]))
 		b.custom_minimum_size = Vector2(0, 48)
 		ScreenFx.style_button(b, Palette.CRIMSON.darkened(0.25) if cost > 0 else Palette.COPPER.darkened(0.35), 18)
 		if cost > RunManager.coins:
 			b.disabled = true
-			b.text += "  (para yetmiyor)"
+			b.text += Loc.t("event_cant_afford")
 		b.pressed.connect(_choose.bind(ch))
 		vb.add_child(b)
 		_choice_btns.append(b)
@@ -157,7 +159,7 @@ func _build() -> void:
 	vb.add_child(_result)
 
 	_continue_btn = Button.new()
-	_continue_btn.text = "Yola Devam (Enter)"
+	_continue_btn.text = Loc.t("event_continue")
 	_continue_btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	_continue_btn.position = Vector2(-320, -92)
 	_continue_btn.size = Vector2(280, 56)
@@ -175,7 +177,7 @@ func _choose(ch: Dictionary) -> void:
 	RunManager.coins -= cost
 	_result.text = _resolve(ch["act"])
 	_result.visible = true
-	_coins_label.text = "Para: %d" % RunManager.coins
+	_coins_label.text = Loc.t("ui_coins") % RunManager.coins
 	for b in _choice_btns:
 		b.disabled = true
 	_continue_btn.visible = true
@@ -183,27 +185,28 @@ func _choose(ch: Dictionary) -> void:
 
 
 ## Seçim sonuçları. Şans içerenler _rng'den (seed'li) çekilir — savescum yok.
+## Dönüş metinleri Loc.t ile aktif dilde çözülür (const değil — burada serbest).
 func _resolve(act: StringName) -> String:
 	match act:
 		&"gezgin_yardim":
 			RunManager.pending_boons.append(&"extra_q")
-			return "Gezgin yarasını sardığın için minnettar: \"Kurdun dilini bilirim — sorularını keskinleştir.\"\n→ Sonraki köyde her gün +1 SORGU hakkı."
+			return Loc.t("res_gezgin_yardim")
 		&"gezgin_gec":
 			RunManager.coins += 10
-			return "Geçerken patikada düşmüş küçük bir kese buldun.\n→ +10 altın."
+			return Loc.t("res_gezgin_gec")
 		&"mezar_kaz":
 			if _rng.randf() < 0.6:
 				RunManager.coins += 40
-				return "Toprağın altından eski gümüş takılar çıktı. Mezarın sahibi sesini çıkarmadı...\n→ +40 altın."
-			return "Kazdıkça toprak soğudu, rüzgâr uğuldadı. Bir şey bulamadan elin boş döndün.\nEnsende hâlâ bir bakış hissediyorsun."
+				return Loc.t("res_mezar_kaz_win")
+			return Loc.t("res_mezar_kaz_lose")
 		&"mezar_gec":
 			RunManager.coins += 5
-			return "Taşı bırakırken mezarın dibinde parlayan bir sikke gördün — hediye sayılır.\n→ +5 altın."
+			return Loc.t("res_mezar_gec")
 		&"fal_bak":
 			RunManager.pending_boons.append(&"reveal_omen")
-			return "Kadın boncukları savurdu, gözleri kaydı: \"Gördüm... lanetin oturduğu deseni gördüm.\"\n→ Sonraki köyde GİZLİ KURAL baştan bilinir."
+			return Loc.t("res_fal_bak")
 		&"fal_gec":
-			return "Çadırdan uzaklaşırken arkandan güldü: \"İnanmayanın yolu uzun olur evlat.\""
+			return Loc.t("res_fal_gec")
 		&"adak_sun":
 			var pool: Array = []
 			for id in RunManager.PASSIVES:
@@ -211,28 +214,28 @@ func _resolve(act: StringName) -> String:
 					pool.append(id)
 			if pool.is_empty():
 				RunManager.coins += 25
-				return "Sunak adağını geri itti — sende zaten her muska var.\n→ Paran iade edildi."
+				return Loc.t("res_adak_full")
 			var id: StringName = pool[_rng.randi() % pool.size()]
 			RunManager.owned_passives.append(id)
-			return "Mumlar kendiliğinden yandı; sunağın üstünde bir muska belirdi:\n→ %s — %s" % [
-				RunManager.PASSIVES[id]["name"], RunManager.PASSIVES[id]["desc"]]
+			return Loc.t("res_adak_sun") % [
+				RunManager.passive_name(id), RunManager.passive_desc(id)]
 		&"dua_et":
 			RunManager.pending_boons.append(&"extra_day")
-			return "Dua bitince rüzgâr durdu; içine bir ferahlık yayıldı.\n→ Sonraki köyde +1 ŞAFAK (gün sınırı)."
+			return Loc.t("res_dua_et")
 		&"kuzu_ara":
 			if _rng.randf() < 0.5:
 				RunManager.coins += 25
-				return "Kuzuyu bir çalının dibinde titrerken buldun. Çocuğun ailesi minnettar:\n→ +25 altın ödül."
-			return "Çalıların arasında yalnız ısıran bir soğuk ve tüy yumakları buldun...\nKuzudan iz yok. Çocuğa bakamadan yürüdün."
+				return Loc.t("res_kuzu_ara_win")
+			return Loc.t("res_kuzu_ara_lose")
 		&"kuzu_gec":
 			RunManager.coins += 8
-			return "Yürürken yol üstünde birinin düşürdüğü birkaç sikke buldun.\n→ +8 altın. (Çocuğun ağlaması kulağında.)"
+			return Loc.t("res_kuzu_gec")
 		&"yangin_sondur":
 			RunManager.pending_boons.append(&"extra_q")
-			return "Alevleri birlikte söndürdünüz. Değirmenci soluk soluğa teşekkür etti:\n\"Ben her şeyi duyarım çoban — kurtların dedikodusunu sana taşırım.\"\n→ Sonraki köyde her gün +1 SORGU hakkı."
+			return Loc.t("res_yangin_sondur")
 		&"yangin_izle":
 			RunManager.coins += 15
-			return "Kalabalık yangına koşarken düşen bir kese senin oldun.\n→ +15 altın. (Değirmen artık kül.)"
+			return Loc.t("res_yangin_izle")
 	return ""
 
 

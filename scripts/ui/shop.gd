@@ -27,9 +27,9 @@ func _build() -> void:
 	add_child(fx)
 
 	var title := _label(Vector2(60, 44), 40, Palette.SAFFRON)
-	title.text = "DÜKKÂN"
+	title.text = Loc.t("shop_title")
 	var sub := _label(Vector2(60, 100), 18, Palette.IVORY.darkened(0.1))
-	sub.text = "Sefer boyu kalıcı muskalar. Para ile al, sonra sürüye devam et."
+	sub.text = Loc.t("shop_sub")
 	ScreenFx.slide_in(title, 0.02, Vector2(-60, 0))
 	ScreenFx.slide_in(sub, 0.1, Vector2(-60, 0))
 
@@ -52,7 +52,7 @@ func _build() -> void:
 	_owned_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	var cont := Button.new()
-	cont.text = "Sürüye Devam (Enter)"
+	cont.text = Loc.t("shop_continue")
 	cont.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	cont.position = Vector2(-320, -92)
 	cont.size = Vector2(280, 56)
@@ -66,7 +66,7 @@ func _offer_row_width() -> float:
 
 
 func _refresh() -> void:
-	_coins_label.text = "Para: %d" % RunManager.coins
+	_coins_label.text = Loc.t("ui_coins") % RunManager.coins
 	for ch in _cards_box.get_children():
 		ch.queue_free()
 	for id in _offers:
@@ -74,12 +74,11 @@ func _refresh() -> void:
 	# Sahip olunanlar
 	var names: Array = []
 	for p in RunManager.owned_passives:
-		names.append(String(RunManager.PASSIVES[p]["name"]))
-	_owned_label.text = "Muskaların: " + (", ".join(names) if not names.is_empty() else "yok")
+		names.append(RunManager.passive_name(p))
+	_owned_label.text = Loc.t("shop_owned_label") + (", ".join(names) if not names.is_empty() else Loc.t("shop_none"))
 
 
 func _make_offer_card(id: StringName) -> Control:
-	var data: Dictionary = RunManager.PASSIVES[id]
 	var owned: bool = RunManager.has_passive(id)
 	var price := RunManager.price_of(id)  # Sadaka Kesesi indirimi dahil
 	var afford: bool = RunManager.coins >= price
@@ -101,14 +100,14 @@ func _make_offer_card(id: StringName) -> Control:
 	panel.add_child(vb)
 
 	var nm := Label.new()
-	nm.text = String(data["name"])
+	nm.text = RunManager.passive_name(id)
 	nm.add_theme_font_size_override("font_size", 22)
 	nm.add_theme_color_override("font_color", Palette.SAFFRON)
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(nm)
 
 	var ds := Label.new()
-	ds.text = String(data["desc"])
+	ds.text = RunManager.passive_desc(id)
 	ds.add_theme_font_size_override("font_size", 15)
 	ds.add_theme_color_override("font_color", Palette.IVORY)
 	ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -120,11 +119,11 @@ func _make_offer_card(id: StringName) -> Control:
 	buy.add_theme_font_size_override("font_size", 18)
 	buy.custom_minimum_size = Vector2(0, 46)
 	if owned:
-		buy.text = "SAHİPSİN"
+		buy.text = Loc.t("shop_owned_btn")
 		buy.disabled = true
 		_style_button(buy, Palette.category_color(Enums.Category.VILLAGER))
 	else:
-		buy.text = "Al  ·  %d ₿" % price
+		buy.text = Loc.t("shop_buy") % price
 		buy.disabled = not afford
 		_style_button(buy, Palette.CRIMSON if afford else Palette.SOOT.lightened(0.2))
 		buy.pressed.connect(func(): _buy(id))

@@ -72,6 +72,22 @@ static func valid_placements(otype: int, params: Dictionary, n: int, evil_count:
 
 ## Astrologer (Müneccim) tanıklık metni — Omen kategorisini ifşa eder (kurt teması).
 static func describe(otype: int) -> String:
+	if Loc.lang == "en":
+		match otype:
+			Enums.OmenType.PARITY:
+				return "The stars say: the wolves all sit on seats of the same parity — all odd numbers, or all even."
+			Enums.OmenType.CONTIGUOUS_ARC:
+				return "The stars say: the wolves sit side by side, forming one unbroken arc."
+			Enums.OmenType.DISPERSED:
+				return "The stars say: the wolves are scattered — no two of them are neighbors."
+			Enums.OmenType.MIRROR:
+				return "The stars say: the wolves' placement is mirrored across an axis (symmetric)."
+			Enums.OmenType.SEAL_EQUIDISTANT:
+				return "The stars say: the wolves all stand at equal distance from the seal (#0)."
+			Enums.OmenType.SAME_SIDE:
+				return "The stars say: the wolves gather on one side of the seal's axis."
+			_:
+				return ""
 	match otype:
 		Enums.OmenType.PARITY:
 			return "Yıldızlar diyor ki: kurtlar hep aynı pariteden koltukta — ya hepsi tek ya hepsi çift numara."
@@ -91,6 +107,15 @@ static func describe(otype: int) -> String:
 
 ## Orta uzunluk ipucu (UI rozetinin alt satırı).
 static func hint(otype: int) -> String:
+	if Loc.lang == "en":
+		match otype:
+			Enums.OmenType.PARITY: return "All wolves sit on seats of the same parity (odd/even)."
+			Enums.OmenType.CONTIGUOUS_ARC: return "The wolves form one unbroken, adjacent arc."
+			Enums.OmenType.DISPERSED: return "No two wolves are neighbors."
+			Enums.OmenType.MIRROR: return "The wolves' placement is symmetric across an axis."
+			Enums.OmenType.SEAL_EQUIDISTANT: return "All wolves are at equal circle distance from the seal (#0)."
+			Enums.OmenType.SAME_SIDE: return "All wolves are on the same side of the seal's axis (excluding #0)."
+			_: return ""
 	match otype:
 		Enums.OmenType.PARITY: return "Kurtlar hep aynı pariteli koltukta (tek/çift)."
 		Enums.OmenType.CONTIGUOUS_ARC: return "Kurtlar bitişik, kesintisiz bir yay."
@@ -103,6 +128,15 @@ static func hint(otype: int) -> String:
 
 ## Kısa etiket (UI rozeti için).
 static func short_label(otype: int) -> String:
+	if Loc.lang == "en":
+		match otype:
+			Enums.OmenType.PARITY: return "Parity"
+			Enums.OmenType.CONTIGUOUS_ARC: return "Unbroken Arc"
+			Enums.OmenType.DISPERSED: return "Scattered"
+			Enums.OmenType.MIRROR: return "Mirrored"
+			Enums.OmenType.SEAL_EQUIDISTANT: return "Seal's Balance"
+			Enums.OmenType.SAME_SIDE: return "One Side"
+			_: return ""
 	match otype:
 		Enums.OmenType.PARITY: return "Parite"
 		Enums.OmenType.CONTIGUOUS_ARC: return "Bitişik Yay"

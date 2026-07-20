@@ -161,11 +161,11 @@ func _build() -> void:
 	_btn_row.offset_bottom = 710
 	add_child(_btn_row)
 
-	_asc_btn = _secondary_btn(_btn_row, "Çile: 1", _cycle_ascension)
-	_daily_btn = _secondary_btn(_btn_row, "Günün Seferi", _start_daily)
-	_rules_btn = _secondary_btn(_btn_row, "Kurallar", func(): Fader.change_scene("res://scenes/rules.tscn"))
-	_codex_btn = _secondary_btn(_btn_row, "Karakterler", func(): Fader.change_scene("res://scenes/codex.tscn"))
-	_settings_btn = _secondary_btn(_btn_row, "Ayarlar", func(): Fader.change_scene("res://scenes/settings.tscn"))
+	_asc_btn = _secondary_btn(_btn_row, Loc.t("map_asc_btn") % 1, _cycle_ascension)
+	_daily_btn = _secondary_btn(_btn_row, Loc.t("btn_daily"), _start_daily)
+	_rules_btn = _secondary_btn(_btn_row, Loc.t("menu_rules"), func(): Fader.change_scene("res://scenes/rules.tscn"))
+	_codex_btn = _secondary_btn(_btn_row, Loc.t("menu_chars"), func(): Fader.change_scene("res://scenes/codex.tscn"))
+	_settings_btn = _secondary_btn(_btn_row, Loc.t("menu_settings"), func(): Fader.change_scene("res://scenes/settings.tscn"))
 
 	# Tohumlu sefer: arkadaşının kopyaladığı TOHUM ile birebir aynı seferi oyna
 	# (skor yarışı — determinizm §13.6). Yalnız menüde (aktif sefer yokken) görünür.
@@ -179,12 +179,12 @@ func _build() -> void:
 	_seed_row.offset_bottom = 756
 	add_child(_seed_row)
 	_seed_edit = LineEdit.new()
-	_seed_edit.placeholder_text = "Tohum (arkadaşından)"
+	_seed_edit.placeholder_text = Loc.t("map_seed_placeholder")
 	_seed_edit.custom_minimum_size = Vector2(280, 34)
 	_seed_edit.add_theme_font_size_override("font_size", 14)
 	_seed_row.add_child(_seed_edit)
 	var seed_btn := Button.new()
-	seed_btn.text = "Tohumla Başla"
+	seed_btn.text = Loc.t("map_seed_btn")
 	seed_btn.custom_minimum_size = Vector2(140, 34)
 	ScreenFx.style_button(seed_btn, Color(0.10, 0.06, 0.08, 0.96), 14)
 	seed_btn.pressed.connect(_start_seeded)
@@ -279,28 +279,29 @@ func _refresh() -> void:
 		# İkincil sıra ana butonun ALTINA insin (üst üste binmesin — bug fix).
 		_btn_row.offset_top = 786
 		_btn_row.offset_bottom = 836
-		_title.text = "GÜNÜN SEFERİ" if RunManager.is_daily else "SEFER"
-		_subtitle.text = ("Tarih tohumlu — bugün herkes aynı köyleri oynuyor" if RunManager.is_daily
-			else "Çile %d" % (RunManager.ascension + 1))
+		_title.text = Loc.t("map_title_daily") if RunManager.is_daily else Loc.t("map_title_run")
+		_subtitle.text = (Loc.t("map_daily_sub") if RunManager.is_daily
+			else Loc.t("map_asc_sub") % (RunManager.ascension + 1))
 		var boss := RunManager.is_current_boss()
 		var ntype: int = RunManager.current_node().get("type", Enums.NodeType.VILLAGE)
-		_info.text = "Durak %d / %d%s   ·   Para: %d   ·   Skor: %d" % [
+		# boss_name config'te Loc anahtarı taşır — gösterim anında çözülür.
+		_info.text = Loc.t("map_stop_line") % [
 			RunManager.current_index + 1, RunManager.nodes.size(),
-			"  (%s)" % RunManager.current_village_config().get("boss_name", "ALFA SÜRÜSÜ") if boss else "",
+			"  (%s)" % Loc.t(String(RunManager.current_village_config().get("boss_name", "boss_default"))) if boss else "",
 			RunManager.coins, RunManager.total_score,
 		]
 		var pnames: Array = []
 		for p in RunManager.owned_passives:
-			pnames.append(String(RunManager.PASSIVES[p]["name"]))
+			pnames.append(RunManager.passive_name(p))
 		if not pnames.is_empty():
-			_info.text += "\nMuskalar: " + ", ".join(pnames)
+			_info.text += "\n" + Loc.t("map_charms") + ", ".join(pnames)
 		match ntype:
 			Enums.NodeType.SHOP:
-				_action_btn.text = "Dükkâna Gir (Enter)"
+				_action_btn.text = Loc.t("btn_enter_shop")
 			Enums.NodeType.EVENT:
-				_action_btn.text = "Ne Var Orada? (Enter)"
+				_action_btn.text = Loc.t("btn_enter_event")
 			_:
-				_action_btn.text = "Alfa Sürüsüne Gir (Enter)" if boss else "Sürüye Gir (Enter)"
+				_action_btn.text = Loc.t("btn_enter_boss") if boss else Loc.t("btn_enter_flock")
 	else:
 		_title.offset_top = 380
 		_title.offset_bottom = 448
@@ -312,28 +313,28 @@ func _refresh() -> void:
 		_action_btn.offset_bottom = 634
 		_btn_row.offset_top = 660
 		_btn_row.offset_bottom = 710
-		_action_btn.text = "Yeni Sefer (Enter)"
+		_action_btn.text = Loc.t("btn_new_run")
 		match RunManager.last_outcome:
 			Enums.RunOutcome.RUN_WON:
-				_title.text = "SEFER TAMAMLANDI!"
-				_subtitle.text = "Alfa sürüsü alt edildi — yeni çile açıldı: Çile %d" % (RunManager.max_ascension_unlocked + 1)
-				_info.text = "Toplam skor: %d   ·   Para: %d" % [RunManager.total_score, RunManager.coins]
+				_title.text = Loc.t("map_run_done_title")
+				_subtitle.text = Loc.t("map_run_done_sub") % (RunManager.max_ascension_unlocked + 1)
+				_info.text = Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins]
 			Enums.RunOutcome.RUN_LOST:
-				_title.text = "SEFER DÜŞTÜ"
-				_subtitle.text = "Sürü kurtlara yem oldu. Tekrar dene."
+				_title.text = Loc.t("map_run_lost_title")
+				_subtitle.text = Loc.t("map_run_lost_sub")
 				_info.text = ""
 			_:
-				_title.text = "KOYUN POSTU"
-				_subtitle.text = "Gündüz sorgula · gece kurt avlanır · kanıt her zaman tutar"
+				_title.text = Loc.t("game_title")
+				_subtitle.text = Loc.t("game_tagline")
 				_info.text = ""
 		# Rekorlar.
 		var rec: Label = _records_panel.get_node("RecLabel")
 		if RunManager.stat_villages_cleared > 0:
-			rec.text = "REKORLAR   ·   Sefer: %d   ·   Köy: %d   ·   En iyi skor: %d   ·   En yüksek: A%d" % [
+			rec.text = Loc.t("map_records") % [
 				RunManager.stat_runs_won, RunManager.stat_villages_cleared,
 				RunManager.stat_best_score, max(1, RunManager.stat_best_ascension)]
 			if RunManager.stat_daily_date == RunManager.today_int():
-				rec.text += "   ·   Bugün: %d" % RunManager.stat_daily_best
+				rec.text += Loc.t("map_records_today") % RunManager.stat_daily_best
 			_records_panel.visible = true
 		else:
 			_records_panel.visible = false
@@ -341,7 +342,7 @@ func _refresh() -> void:
 
 
 func _update_asc_btn() -> void:
-	_asc_btn.text = "Çile: %d" % (_pending_ascension + 1)
+	_asc_btn.text = Loc.t("map_asc_btn") % (_pending_ascension + 1)
 
 
 func _cycle_ascension() -> void:
@@ -383,7 +384,7 @@ func _start_seeded() -> void:
 		if ch >= "0" and ch <= "9":
 			digits += ch
 	if digits.is_empty():
-		_seed_edit.placeholder_text = "Geçerli bir tohum gir!"
+		_seed_edit.placeholder_text = Loc.t("map_seed_invalid")
 		_seed_edit.text = ""
 		return
 	RunManager.start_run(_pending_ascension, int(digits.substr(0, 12)))

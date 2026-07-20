@@ -47,28 +47,28 @@ func _build_warning() -> void:
 	add_child(_warning_box)
 
 	var head := Label.new()
-	head.text = "SAĞLIK UYARISI"
+	head.text = Loc.t("boot_health_title")
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	head.add_theme_font_size_override("font_size", 26)
 	head.add_theme_color_override("font_color", Color("d8cfc2"))
 	_warning_box.add_child(head)
 
 	var body := Label.new()
-	body.text = "Bu oyun yanıp sönen görüntüler ve ani ışık değişimleri içerebilir.\nNadir de olsa bu görüntüler, ışığa duyarlı kişilerde epilepsi nöbetlerini tetikleyebilir.\nBaş dönmesi, görme bozukluğu ya da rahatsızlık hissederseniz oyunu hemen bırakın\nve bir hekime danışın."
+	body.text = Loc.t("boot_health_body")
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	body.add_theme_font_size_override("font_size", 17)
 	body.add_theme_color_override("font_color", Color("9a938b"))
 	_warning_box.add_child(body)
 
 	var save_note := Label.new()
-	save_note.text = "Bu oyun ilerlemenizi otomatik olarak kaydeder.\nKayıt sırasında uygulamayı kapatmayın."
+	save_note.text = Loc.t("boot_save_note")
 	save_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	save_note.add_theme_font_size_override("font_size", 15)
 	save_note.add_theme_color_override("font_color", Color("6f6a64"))
 	_warning_box.add_child(save_note)
 
 	var skip := Label.new()
-	skip.text = "devam etmek için bir tuşa basın"
+	skip.text = Loc.t("boot_press_key")
 	skip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	skip.add_theme_font_size_override("font_size", 13)
 	skip.add_theme_color_override("font_color", Color("4a4642"))
@@ -160,7 +160,7 @@ func _draw_logo() -> void:
 			_logo.draw_string(font, Vector2(x, base_y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("e8e2d6"))
 			x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + tracking
 
-	var foot := "© 2026 Codezu · Tüm hakları saklıdır"
+	var foot := Loc.t("boot_copyright")
 	var fw := font.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 	_logo.draw_string(font, Vector2(c.x - fw * 0.5, size.y - 42.0), foot,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("55504a"))

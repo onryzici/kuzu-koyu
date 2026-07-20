@@ -76,21 +76,21 @@ func show_for(seat: int, card_rect: Rect2, screen: Vector2, avoid_side := "right
 	_title.add_theme_color_override("font_color", cat_col.lightened(0.25))
 	_ability.text = RoleNames.ability(shown_role)
 	if c.night_killed:
-		_ability.text = "Gece kurda yem oldu — kesin İYİYDİ. Verdiği ifadeler hâlâ geçerli."
+		_ability.text = Loc.t("tip_night_dead")
 	elif c.is_alive():
 		var left := c.claims.size() - c.given
-		_ability.text += "\nSorgula: sol tık.  Kalan ifadesi: %d." % left
+		_ability.text += Loc.t("tip_question_hint") % left
 	# Verdiği TÜM ifadeler (balonda yalnız sonuncusu görünür — eskiler kaybolmasın).
 	if c.given > 0:
 		var lines: Array = []
 		for k in range(c.given):
 			lines.append("%d) „%s”" % [k + 1, c.claims[k].text])
-		_ability.text += "\n\nİfadeleri:\n" + "\n".join(lines)
+		_ability.text += Loc.t("tip_claims_header") + "\n".join(lines)
 	_add_badge(_category_name(shown_cat), cat_col)
 	if truth_known:
-		_add_badge("Kurt!" if shown_evil else "İyiydi", Palette.BLOOD if shown_evil else Color("3FBF6B"))
+		_add_badge(Loc.t("tip_was_wolf") if shown_evil else Loc.t("tip_was_good"), Palette.BLOOD if shown_evil else Color("3FBF6B"))
 	elif seat in GameState.village.anchors:
-		_add_badge("Kefilli — kesin İyi", Palette.SAFFRON)
+		_add_badge(Loc.t("tip_anchor"), Palette.SAFFRON)
 
 	reset_size()
 	_place(card_rect, screen, avoid_side)
@@ -148,12 +148,12 @@ func _add_badge(text: String, col: Color) -> void:
 func _category_name(cat: int) -> String:
 	match cat:
 		Enums.Category.VILLAGER:
-			return "Koyun"
+			return Loc.t("cat_villager")
 		Enums.Category.OUTCAST:
-			return "Parya"
+			return Loc.t("cat_outcast")
 		Enums.Category.MINION:
-			return "Kurt"
+			return Loc.t("cat_minion")
 		Enums.Category.DEMON:
-			return "Alfa Kurt"
+			return Loc.t("cat_demon")
 		_:
 			return ""
