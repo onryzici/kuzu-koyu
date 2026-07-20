@@ -81,7 +81,8 @@ func _refresh() -> void:
 func _make_offer_card(id: StringName) -> Control:
 	var data: Dictionary = RunManager.PASSIVES[id]
 	var owned: bool = RunManager.has_passive(id)
-	var afford: bool = RunManager.coins >= int(data["price"])
+	var price := RunManager.price_of(id)  # Sadaka Kesesi indirimi dahil
+	var afford: bool = RunManager.coins >= price
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(260, 230)
@@ -123,7 +124,7 @@ func _make_offer_card(id: StringName) -> Control:
 		buy.disabled = true
 		_style_button(buy, Palette.category_color(Enums.Category.VILLAGER))
 	else:
-		buy.text = "Al  ·  %d ₿" % int(data["price"])
+		buy.text = "Al  ·  %d ₿" % price
 		buy.disabled = not afford
 		_style_button(buy, Palette.CRIMSON if afford else Palette.SOOT.lightened(0.2))
 		buy.pressed.connect(func(): _buy(id))
@@ -138,7 +139,11 @@ func _buy(id: StringName) -> void:
 
 
 func _continue() -> void:
-	get_tree().change_scene_to_file("res://scenes/run_map.tscn")
+	# Dükkân artık harita DÜĞÜMÜ (§4): çıkışta düğümü tamamla, haritada ilerle.
+	if RunManager.has_active_run() \
+			and RunManager.current_node().get("type", -1) == Enums.NodeType.SHOP:
+		RunManager.on_stop_completed()
+	Fader.change_scene("res://scenes/run_map.tscn")
 
 
 func _unhandled_input(event: InputEvent) -> void:

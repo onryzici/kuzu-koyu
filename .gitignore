@@ -8,5 +8,6 @@ Thumbs.db
 
 # Dışa aktarım çıktıları
 export/
+build/
 *.pck
 *.exe.import

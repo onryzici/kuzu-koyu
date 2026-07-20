@@ -107,7 +107,7 @@ func _close() -> void:
 	if overlay_mode:
 		queue_free()
 	else:
-		get_tree().change_scene_to_file("res://scenes/run_map.tscn")
+		Fader.change_scene("res://scenes/run_map.tscn")
 
 
 func _unhandled_input(event: InputEvent) -> void:

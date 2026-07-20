@@ -45,6 +45,18 @@ func start_village(state: VillageState) -> void:
 		# Pusula: ilk gece kurt avlanamaz (sürü bir şafak kazanır).
 		if RunManager.has_passive(&"pusula"):
 			_night_grace = true
+		# Olay düğümü ödülleri (tek köylük; tüketilir — bkz. RunManager.pending_boons).
+		for boon in RunManager.pending_boons:
+			match boon:
+				&"extra_q":
+					village.q_per_day += 1
+					village.questions_left += 1
+				&"extra_day":
+					village.max_days += 1
+				&"reveal_omen":
+					if village.omen_type != Enums.OmenType.NONE:
+						village.known_omen = village.omen_type
+		RunManager.pending_boons.clear()
 	_set_phase(Enums.GamePhase.REVEAL_IDLE)
 
 
@@ -81,12 +93,19 @@ func question(seat: int) -> bool:
 		return false
 	c.given += 1
 	c.testimony = c.claims[c.given - 1]
+	c.claim_days.append(village.day)  # İfade Defteri: hangi gün söylendi
 	village.questions_left -= 1
 	# Müneccim ilk sorguda Gizli Kural'ı (Omen) ifşa eder → solver + HUD rozeti.
 	if c.role == &"Astrologer" and village.omen_type != Enums.OmenType.NONE and village.known_omen == Enums.OmenType.NONE:
 		village.known_omen = village.omen_type
 		EventBus.omen_hint_learned.emit(village.omen_type)
 	EventBus.character_questioned.emit(seat)
+	# Uğursuz: sorgulayanın sürüsünden 1 can alır (nazar) — İLAN edilen bedel.
+	if c.role == &"Jinxed":
+		health -= 1
+		EventBus.player_damaged.emit(1, health)
+		if health <= 0:
+			_end(false, "Uğursuz'un nazarı sürüyü bitirdi")
 	return true
 
 
@@ -106,8 +125,13 @@ func end_day(protected: int = -1) -> void:
 		var victims: Array = []
 		for k in range(village.kills_per_night):
 			var v := NightEngine.apply(village, protected)
-			if v < 0:
+			if v == -1:
 				break
+			if v == -2:
+				# TUZAK tetiklendi: ölüm yok; yakalanan kurt son gece olayında.
+				var ev: Dictionary = village.night_events.back()
+				EventBus.trap_sprung.emit(int(ev["trapped"]), int(ev.get("caught", -1)))
+				continue
 			victims.append(v)
 			EventBus.night_kill.emit(v)
 		EventBus.night_passed.emit(victims)
@@ -144,11 +168,14 @@ func execute(seat: int) -> void:
 	# Ermiş (Saint) ayıklandı → anında felaket (§6). Kutsama Suyu varsa felaket
 	# yerine normal yanlış-ayıklama cezası (aşağı düşer).
 	if c.role == &"Saint" and not (RunManager.has_active_run() and RunManager.has_passive(&"kutsama")):
-		_end(false, "Ermiş'i ayıkladın — felaket!")
+		_end(false, "Ermiş'i avladın — felaket!")
 		return
 
 	if was_evil:
 		score += 100
+		# Cesaret Tılsımı: kurt avı o gün +1 sorgu hakkı kazandırır.
+		if RunManager.has_active_run() and RunManager.has_passive(&"cesaret"):
+			village.questions_left += 1
 	else:
 		var dmg := wrong_execute_damage()
 		# Kalkan: köy başına ilk yanlış hasarsız.
@@ -167,6 +194,21 @@ func execute(seat: int) -> void:
 		return
 
 	_set_phase(Enums.GamePhase.REVEAL_IDLE)
+
+
+## Tuzakçı aktif yeteneği: bu GECE için bir koltuğa kapan kur (tek kullanım).
+## Av o koltuğa denk gelirse kurban ölmez; saldıran kurt yakalanır (yüzü açılır).
+func arm_trap(trapper_seat: int, target_seat: int) -> void:
+	if not is_active():
+		return
+	var tr := village.get_character(trapper_seat)
+	if tr.role != &"Trapper" or tr.ability_used or not tr.is_alive():
+		return
+	if not village.get_character(target_seat).is_alive():
+		return
+	tr.ability_used = true
+	village.trap_seat = target_seat
+	EventBus.trap_set.emit(trapper_seat, target_seat)
 
 
 ## Kılıççı (Slayer) aktif yeteneği: slayer_seat, target_seat'e kılıç saplar.

@@ -139,4 +139,4 @@ func _toggle_fullscreen() -> void:
 
 func _to_main() -> void:
 	_resume()
-	get_tree().change_scene_to_file("res://scenes/run_map.tscn")
+	Fader.change_scene("res://scenes/run_map.tscn")

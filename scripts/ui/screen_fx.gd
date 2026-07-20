@@ -8,6 +8,7 @@ extends Control
 
 const BG_TEXTURE := preload("res://assets/art/bg/ritual_ground.png")
 
+@export var bg_texture: Texture2D = null          ## null ise ritüel zemini kullanılır
 @export var tint := Color(0.34, 0.30, 0.38)      ## doku modülasyonu (koyu)
 @export var overlay := Color(0.05, 0.02, 0.06, 0.55)  ## üst kaplama
 @export var show_eye := false                     ## büyük göz (ana menü)
@@ -49,10 +50,11 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	# Zemin dokusu (cover) + koyu modülasyon.
-	var ts := Vector2(BG_TEXTURE.get_width(), BG_TEXTURE.get_height())
+	var tex := bg_texture if bg_texture != null else BG_TEXTURE
+	var ts := Vector2(tex.get_width(), tex.get_height())
 	var sc := maxf(size.x / ts.x, size.y / ts.y)
 	var ds := ts * sc
-	draw_texture_rect(BG_TEXTURE, Rect2((size - ds) * 0.5, ds), false, tint)
+	draw_texture_rect(tex, Rect2((size - ds) * 0.5, ds), false, tint)
 	draw_rect(Rect2(Vector2.ZERO, size), overlay, true)
 
 	if show_eye:
@@ -64,22 +66,40 @@ func _draw() -> void:
 		_star(Vector2(s.x, s.y), s.size * 1.7 * (0.7 + 0.3 * tw), Color(0.96, 0.74, 0.36, tw), _t * 0.4 + s.phase)
 
 
-## Büyük nazar gözü (board'daki dille): dalgalı kızıl badem + koyu bebek + kenar glow.
+## Büyük nazar gözü (board'daki dille): loblu koyu gövde + kızıl göz + İRİ bebek
+## (kenara kayınca kızıl hilal). Board'daki yaratıkla aynı aile.
 func _draw_eye(c: Vector2) -> void:
 	var breathe := 0.5 + 0.5 * sin(_t * 1.1)
 	var tw := _t * 1.1
+	var open := 1.0
 	var rx := 88.0 * (0.98 + 0.04 * breathe)
 	var ry := 104.0 * (0.98 + 0.04 * breathe)
+	# Koyu loblu gövde.
+	draw_colored_polygon(_blob(c, rx * 1.42, ry * 1.30, tw * 0.65), Color(0.04, 0.01, 0.015, 1.0))
+	var rye := ry * open
 	for i in range(6):
 		var f := float(i) / 6.0
-		draw_colored_polygon(_almond(c, rx * (1.0 + f * 0.4), ry * (1.0 + f * 0.38), tw),
-			Color(0.72, 0.06, 0.04, 0.10 * (1.0 - f)))
-	draw_colored_polygon(_almond(c, rx * 1.18, ry * 1.18, tw), Color(0.04, 0.01, 0.015, 1.0))
-	draw_colored_polygon(_almond(c, rx, ry, tw), Color(0.46, 0.03, 0.02, 1.0))
-	draw_colored_polygon(_almond(c, rx * 0.9, ry * 0.9, tw), Color(0.86, 0.11, 0.06, 1.0))
+		draw_colored_polygon(_almond(c, rx * (1.0 + f * 0.4), rye * (1.0 + f * 0.38), tw),
+			Color(0.72, 0.06, 0.04, 0.10 * (1.0 - f) * (0.4 + 0.6 * open)))
+	draw_colored_polygon(_almond(c, rx, rye, tw), Color(0.46, 0.03, 0.02, 1.0))
+	draw_colored_polygon(_almond(c, rx * 0.9, rye * 0.9, tw), Color(0.86, 0.11, 0.06, 1.0))
+	if open < 0.25:
+		return
 	var look := Vector2(sin(tw * 0.5) * 0.3, sin(tw * 0.8 + 1.0) * 0.2)
-	var pc := c + Vector2(look.x * rx * 0.4, look.y * ry * 0.45)
-	draw_colored_polygon(_almond(pc, rx * 0.42, ry * 0.5, tw), Color(0.03, 0.0, 0.0, 1.0))
+	var pc := c + Vector2(look.x * rx * 0.36, look.y * rye * 0.32)
+	draw_colored_polygon(_almond(pc, rx * 0.56, rye * 0.60, tw), Color(0.05, 0.004, 0.01, 1.0))
+	draw_colored_polygon(_almond(pc, rx * 0.33, rye * 0.37, tw), Color(0.0, 0.0, 0.0, 1.0))
+
+
+## Loblu organik gövde konturu (board _blob_outline ile aynı dil).
+func _blob(c: Vector2, rx: float, ry: float, tw: float) -> PackedVector2Array:
+	var seg := 52
+	var pts := PackedVector2Array()
+	for i in range(seg):
+		var a := TAU * float(i) / float(seg)
+		var wob := 1.0 + 0.09 * sin(a * 4.0 + tw) + 0.055 * sin(a * 7.0 - tw * 0.7) + 0.04 * sin(a * 2.0 + tw * 0.5)
+		pts.append(c + Vector2(cos(a) * rx * wob, sin(a) * ry * wob))
+	return pts
 
 
 func _almond(c: Vector2, rx: float, ry: float, tw: float) -> PackedVector2Array:

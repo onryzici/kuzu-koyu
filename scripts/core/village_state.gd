@@ -25,6 +25,8 @@ extends Resource
 @export var questions_left: int = 3          ## bugün kalan sorgu
 @export var max_days: int = 5                ## bu şafak sayısı dolunca köy düşer
 @export var kills_per_night: int = 1         ## gece başına kurban (boss: 2)
+@export var night_rule: int = Enums.NightRule.NEAREST  ## av düzeni (İLAN edilir)
+@export var trap_seat: int = -1              ## Tuzakçı kapanı (bu gece; -1 = yok)
 @export var night_events: Array = []         ## [{alive: Array[int], victim: int, day: int}]
 
 

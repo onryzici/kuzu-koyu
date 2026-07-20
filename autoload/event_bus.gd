@@ -18,6 +18,8 @@ signal spread_occurred(seat: int)               ## M3
 signal village_won(score: int)
 signal village_lost(reason: String)
 signal omen_hint_learned(omen_type_partial: int) ## M3
+signal trap_set(trapper_seat: int, target_seat: int)
+signal trap_sprung(trapped_seat: int, caught_seat: int)
 signal slayer_used(slayer_seat: int, target_seat: int, hit: bool) ## aktif yetenek
 signal phase_changed(new_phase: int)
 

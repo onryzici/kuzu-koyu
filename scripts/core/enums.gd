@@ -22,19 +22,27 @@ enum TestimonyType {
 	ROLE_PRESENT,           ## "Oyunda bir Knight var"
 	PAIR_RELATION,          ## "#1 ve #4 aynı alignment'ta"
 	SELF_ANCHOR,            ## flavor / ankraj
+	COUNT_PARITY_IN_SET,    ## "Şu kartlardaki kurt sayısı TEK/ÇİFT" (mod-2 kısıtı)
+	NEAREST_EVIL_MIN_DIST,  ## "En yakın kurt bana K'dan UZAK/YAKIN" (eşitsizlik)
+	WOLF_GAP,               ## "En yakın iki kurdun arası tam K adım" (kurtlar-arası yapı)
+	OPPOSITE_ALIGNMENT,     ## "Tam karşımdaki koltuk kurt/temiz" (yalnız çift n)
 }
 
 ## En yakın Evil'e yön. Seat index saat yönünde artar.
 enum Direction { CLOCKWISE, COUNTER_CLOCKWISE, EQUIDISTANT }
 
 ## Gizli kural kategorileri. Bkz. CLAUDE.md §5.5.
-enum OmenType { PARITY, CONTIGUOUS_ARC, DISPERSED, MIRROR, SUIT, DEMON_DISTANCE, NONE }
+enum OmenType { PARITY, CONTIGUOUS_ARC, DISPERSED, MIRROR, SUIT, DEMON_DISTANCE, SEAL_EQUIDISTANT, SAME_SIDE, NONE }
 
 ## Oyuncunun karta koyduğu renkli not. Bkz. CLAUDE.md §7.5.
 enum MarkType { NONE, MARK_GOOD, MARK_SUSPECT, MARK_EVIL, MARK_QUESTION }
 
 ## Üst seviye durum makinesi. Bkz. CLAUDE.md §13.5.
 enum GamePhase { SETUP, REVEAL_IDLE, ABILITY_TARGETING, EXECUTE_CONFIRM, RESOLVE, SPREAD, VILLAGE_END }
+
+## Gece Av Düzeni varyantı: NEAREST = klasik (en yakın koyun),
+## FARTHEST = sisli gece (kurt en uzağı avlar). Köyde İLAN edilir.
+enum NightRule { NEAREST, FARTHEST }
 
 ## Karşılaştırma yönü (Architect / EVIL_COUNT_IN_REGION için).
 enum Compare { LESS, EQUAL, GREATER }

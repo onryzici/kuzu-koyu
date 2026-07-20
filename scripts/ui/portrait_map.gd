@@ -17,6 +17,13 @@ const PATHS := {
 	&"Architect": "res://assets/art/portraits/wheel.png",
 	&"Lover": "res://assets/art/portraits/lovers.png",
 	&"Gossip": "res://assets/art/portraits/magician.png",
+	# Yeni köylüler (placeholder portreler — final sanat gelene dek paylaşımlı).
+	&"Healer": "res://assets/art/portraits/judgement.png",
+	&"Weaver": "res://assets/art/portraits/wheel.png",
+	&"Midwife": "res://assets/art/portraits/temperance.png",
+	&"Milkmaid": "res://assets/art/portraits/star.png",
+	&"Crier": "res://assets/art/portraits/magician.png",
+	&"Beekeeper": "res://assets/art/portraits/hermit.png",
 	&"Astrologer": "res://assets/art/portraits/emperor.png",
 	&"Slayer": "res://assets/art/portraits/strength.png",
 	&"Hunter": "res://assets/art/portraits/chariot.png",

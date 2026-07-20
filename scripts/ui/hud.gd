@@ -6,6 +6,8 @@ extends Control
 
 signal execute_toggled
 signal day_end_requested
+signal log_toggled                       ## İfade Defteri butonu
+signal night_hover_changed(hovering: bool)  ## GECE hover → av önizlemesi
 signal restart_requested
 
 var _quest_label: Label
@@ -16,13 +18,16 @@ var _meta_label: Label
 var _village_label: Label
 var _score_label: Label
 var _day_btn: Button           ## Günü Bitir (gece) butonu
-var _banner_label: Label
+var _log_btn: Button           ## İfade Defteri butonu (TAB)
+var _banner: RibbonBanner  ## board sahibi; attach_banner ile bağlanır
 var _menu_strips: Array = []   ## sol menü banner'ları (kendi tasarım; intro'da kayar)
 var _comp_off := 0.0           ## kompozisyon paneli sağdan giriş kayması
 var _legend_off := 0.0         ## mark lejantı + ayıkla butonu sağdan giriş
 var _globe_off := 0.0          ## can küresi soldan giriş
 var _execute_btn: Button
-var _legend_label: Label
+var _exec_icon: Control        ## butonun içine çizilen hançer/iptal ikonu (emoji yok)
+var _day_icon: Control         ## gece butonuna çizilen hilal ikonu (emoji yok)
+var _exec_mode := false
 var _overlay: ColorRect
 var _overlay_label: Label
 var _restart_btn: Button
@@ -49,6 +54,25 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	queue_redraw()
+	# Buton ikonları canlı (göz bebeği gezinir, zZz süzülür) — her kare tazele.
+	if _exec_icon != null:
+		_exec_icon.queue_redraw()
+	if _day_icon != null:
+		_day_icon.queue_redraw()
+
+
+## Yuvarlak buton çerçevesi: yumuşak düşen gölge; hover'da gölge butonla birlikte
+## büyür + arkada sıcak hale belirir. Av modu sinyali ring_col ile ince tek halka.
+func _draw_button_frame(c: Vector2, r: float, ring_col: Color, hovered: bool) -> void:
+	var rr := r * (1.08 if hovered else 1.0)
+	draw_circle(c + Vector2(0, 5), rr + 6.0, Color(0, 0, 0, 0.35))
+	if hovered:
+		# Sıcak kandil parıltısı — imleç üstündeyken buton "uyanır".
+		draw_circle(c, rr + 24.0, Color(0.95, 0.72, 0.35, 0.05))
+		draw_circle(c, rr + 12.0, Color(0.95, 0.72, 0.35, 0.09))
+	# Av modu açıkken tek ince kızıl halka (işlevsel sinyal; süs değil).
+	if ring_col.r > 0.5:
+		draw_arc(c, rr + 2.0, 0, TAU, 56, ring_col, 2.5, true)
 
 
 ## Dalgalanan (organik) dolu disk — siyah border'ların temeli.
@@ -70,43 +94,50 @@ func _build() -> void:
 
 	# Can küresi (sol-alt): tüm çizim (gauge + sayı) _draw'da.
 
-	# Banner (alt-orta; üst-orta kart #0'ın altında kalmasın diye)
-	_banner_label = _add_label(Vector2.ZERO, 22, Palette.SAFFRON)
-	_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_banner_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_banner_label.offset_top = -54
-	_banner_label.offset_bottom = -18
+	# Duyuru şeridi (RibbonBanner) BOARD'a aittir — gece HUD çekilirken görünür
+	# kalsın diye; attach_banner ile bağlanır.
 
 	# Arındır butonu — yuvarlak ritüel-hançer butonu (sağ-alt köşe, mutlak konum).
+	# Metin yerine ÇİZİLMİŞ ikon (hançer / iptal çarpısı) + altında ad — emoji yok.
 	_execute_btn = Button.new()
-	_execute_btn.text = "Ayıkla"
-	_execute_btn.add_theme_font_size_override("font_size", 19)
+	_execute_btn.text = ""
 	_execute_btn.position = Vector2(1466, 752)
 	_execute_btn.size = Vector2(116, 116)
 	_execute_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_round_button(_execute_btn)
 	_execute_btn.pressed.connect(func(): execute_toggled.emit())
 	add_child(_execute_btn)
+	_exec_icon = _add_btn_icon(_execute_btn, _draw_exec_icon)
+	_setup_hover(_execute_btn)
 
 	# Günü Bitir (gece) butonu — Ayıkla'nın üstünde, gece indigo yuvarlak.
 	# Emniyet: sorgu hakkı dururken ilk basış UYARIR, 2.5 sn içinde ikinci basış onaylar.
 	_day_btn = Button.new()
-	_day_btn.text = "🌙 Gece"
-	_day_btn.add_theme_font_size_override("font_size", 15)
+	_day_btn.text = ""
 	_day_btn.position = Vector2(1478, 618)
 	_day_btn.size = Vector2(92, 92)
 	_day_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_night_button(_day_btn)
 	_day_btn.pressed.connect(_on_day_btn)
+	# Hover: Av Düzeni önizlemesi (board olası kurbanları vurgular).
+	_day_btn.mouse_entered.connect(func(): night_hover_changed.emit(true))
+	_day_btn.mouse_exited.connect(func(): night_hover_changed.emit(false))
 	add_child(_day_btn)
+	_day_icon = _add_btn_icon(_day_btn, _draw_day_icon)
+	_setup_hover(_day_btn)
 
-	# Mark lejantı — yuvarlak butonun soluna. Mutlak konum (base 1600x900).
-	_legend_label = _add_label(Vector2(1128, 760), 14, Palette.IVORY)
-	_legend_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_legend_label.size = Vector2(316, 100)
-	_legend_label.add_theme_constant_override("line_spacing", 4)
-	# Karta gel, tuşa bas (ya da sağ tık: döngü). Renk-körü için şekil de var.
-	_legend_label.text = "İşaret — karta gel, tuşa bas:\n1 ▲ İyi   2 ◆ Şüpheli   3 ✖ Kurt\n4 ! Soru   5 Sil   (sağ tık: döngü)"
+	# İfade Defteri butonu — gece butonunun solunda küçük yuvarlak (TAB kısayolu).
+	_log_btn = Button.new()
+	_log_btn.text = ""
+	_log_btn.position = Vector2(1392, 634)
+	_log_btn.size = Vector2(62, 62)
+	_log_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_log_btn.tooltip_text = "İfade Defteri (TAB)"
+	_style_night_button(_log_btn)
+	_log_btn.pressed.connect(func(): log_toggled.emit())
+	add_child(_log_btn)
+	_add_btn_icon(_log_btn, _draw_log_icon)
+	_setup_hover(_log_btn)
 
 	# Hasar flaşı (tam ekran kızıl, başta görünmez)
 	_dmg_flash = ColorRect.new()
@@ -261,21 +292,21 @@ func play_intro() -> void:
 	ct.tween_interval(0.15)
 	ct.tween_method(func(v: float): _comp_off = v; queue_redraw(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
-	# Mark lejantı + ayıkla/gece butonları — sağdan (drawn kutu + node'lar aynı offset ile).
-	var lx0 := _legend_label.position.x
+	# Ayıkla/gece/defter butonları — sağdan giriş.
 	var ex0 := _execute_btn.position.x
 	var dx0 := _day_btn.position.x
+	var lg0 := _log_btn.position.x
 	_legend_off = 560.0
-	_legend_label.position.x = lx0 + 560.0
 	_execute_btn.position.x = ex0 + 560.0
 	_day_btn.position.x = dx0 + 560.0
+	_log_btn.position.x = lg0 + 560.0
 	var lt := create_tween()
 	lt.tween_interval(0.22)
 	lt.tween_method(func(v: float):
 		_legend_off = v
-		_legend_label.position.x = lx0 + v
 		_execute_btn.position.x = ex0 + v
 		_day_btn.position.x = dx0 + v
+		_log_btn.position.x = lg0 + v
 		queue_redraw(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 	# Can küresi — soldan.
@@ -297,18 +328,139 @@ func _style_button(btn: Button, bg: Color, border: Color) -> void:
 	btn.add_theme_color_override("font_color", Palette.IVORY)
 
 
+## Yuvarlak buton hover'ı: yumuşak büyüme (geri esnemeli), çıkışta sakin dönüş.
+## Basılıyken hafif çökme. Parıltı _draw'daki çerçevede (is_hovered ile).
+func _setup_hover(btn: Button) -> void:
+	btn.pivot_offset = btn.size * 0.5
+	btn.mouse_entered.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2(1.08, 1.08), 0.14) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+	btn.mouse_exited.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2.ONE, 0.16) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT))
+	btn.button_down.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2(0.97, 0.97), 0.06))
+	btn.button_up.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2(1.08, 1.08) if btn.is_hovered() else Vector2.ONE, 0.12) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+
+
+## Butonun içine tam-kaplama, tıklama yutmayan ikon katmanı ekler.
+func _add_btn_icon(btn: Button, draw_fn: Callable) -> Control:
+	var ic := Control.new()
+	ic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ic.draw.connect(draw_fn.bind(ic))
+	btn.add_child(ic)
+	return ic
+
+
+## Merkez nazar gözünün minyatür konturu (aynı wobble dili) — buton ikonları
+## board'daki dev gözle akraba görünsün (kullanıcı isteği: "o tarz bi şey").
+func _mini_eye(c: Vector2, rx: float, ry: float, tw: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(36):
+		var a := TAU * float(i) / 36.0
+		var wob := 1.0 + 0.05 * sin(a * 3.0 + tw) + 0.03 * sin(a * 5.0 - tw * 0.6)
+		var yb := sin(a)
+		pts.append(c + Vector2(cos(a) * rx * wob, yb * ry * (1.0 + 0.06 * yb) * wob))
+	return pts
+
+
+## Defter butonu ikonu: TOMAR (rulo parşömen) — üst/alt rulo + gövde + satırlar.
+func _draw_log_icon(ic: Control) -> void:
+	var parch := Color("e8dcc0")
+	var ink := Color("6a5a42")
+	var c := Vector2(ic.size.x * 0.5, ic.size.y * 0.5)
+	# Gövde (dikey parşömen şeridi).
+	ic.draw_rect(Rect2(c + Vector2(-9.0, -11.0), Vector2(18.0, 22.0)), parch)
+	# Üst ve alt rulolar: gövdeden koyu ayrım çizgisiyle kopan silindirler.
+	for sy: float in [-1.0, 1.0]:
+		var ry: float = c.y + sy * 12.0
+		ic.draw_rect(Rect2(Vector2(c.x - 12.0, ry - 3.0), Vector2(24.0, 6.0)), parch)
+		ic.draw_line(Vector2(c.x - 12.0, ry - sy * 3.0), Vector2(c.x + 12.0, ry - sy * 3.0),
+			Color(ink.r, ink.g, ink.b, 0.5), 1.4)
+		ic.draw_circle(Vector2(c.x - 12.0, ry), 3.0, parch)
+		ic.draw_circle(Vector2(c.x + 12.0, ry), 3.0, parch)
+		ic.draw_circle(Vector2(c.x + 12.0, ry), 1.4, ink)
+	# Satırlar (yazı hissi).
+	for r in [-5.0, 0.0, 5.0]:
+		ic.draw_line(c + Vector2(-5.5, r), c + Vector2(5.5, r), Color(ink.r, ink.g, ink.b, 0.75), 1.5)
+
+
+## Gece butonu ikonu: dolgun HİLAL (gerçek iki-çember kesişimiyle hesaplanmış
+## kavis) + minik yıldızlar. Altında "GECE".
+func _draw_day_icon(ic: Control) -> void:
+	var moon := Color("f2e6bf")
+	var c := ic.size * 0.5
+	# Hilal poligonu: dış çember r=13, kesen çember merkez +7x r=10.
+	# Kesişim açıları: dışta ±49.6° (0.867 rad), kesende ±81.8° (1.427 rad).
+	var pts := PackedVector2Array()
+	var seg := 22
+	for i in range(seg + 1):
+		var a := lerpf(0.867, TAU - 0.867, float(i) / float(seg))  # dış yay (uzun yol)
+		pts.append(c + Vector2(cos(a), sin(a)) * 13.0)
+	for i in range(seg + 1):
+		var a := lerpf(TAU - 1.427, 1.427, float(i) / float(seg))  # kesen yay (geri)
+		pts.append(c + Vector2(7.0, 0.0) + Vector2(cos(a), sin(a)) * 10.0)
+	ic.draw_colored_polygon(pts, moon)
+	# Hilalin açığında iki minik yıldız (twinkle).
+	for s in [[Vector2(9.0, -8.0), 0.0], [Vector2(12.0, 3.0), 2.4]]:
+		var sp: Vector2 = c + s[0]
+		var tw := 0.6 + 0.4 * sin(_t * 2.6 + float(s[1]))
+		ic.draw_line(sp + Vector2(-3.2 * tw, 0), sp + Vector2(3.2 * tw, 0), moon, 1.5)
+		ic.draw_line(sp + Vector2(0, -3.2 * tw), sp + Vector2(0, 3.2 * tw), moon, 1.5)
+
+
+## Avla butonu ikonu: KESKİN NİŞANGÂH — tırnak hizalarında boşluklu dış halka
+## (dürbün retikülü), içeri uzanan tırnaklar, ince iç artı + merkez nokta.
+## Yavaşça döner + nefes alır. Av modunda vazgeç çarpısı. Yazı yok (ikon yeter).
+func _draw_exec_icon(ic: Control) -> void:
+	var cream := Color("fff2dc")
+	var red := Color(0.84, 0.17, 0.12)
+	var c := ic.size * 0.5
+	if _exec_mode:
+		# Vazgeç: kalın çarpı.
+		ic.draw_line(c + Vector2(-13, -13), c + Vector2(13, 13), cream, 6.0)
+		ic.draw_line(c + Vector2(13, -13), c + Vector2(-13, 13), cream, 6.0)
+		return
+	var rot := _t * 0.5                      # yavaş retikül dönüşü
+	var r := 19.0 + 1.0 * sin(_t * 2.2)      # nefes
+	# Dış halka: tırnak hizalarında boşluk bırakan 4 yay (retikül dili).
+	for k in range(4):
+		var a0 := rot + PI * 0.5 * float(k) + 0.30
+		ic.draw_arc(c, r, a0, a0 + PI * 0.5 - 0.60, 18, red, 2.6, true)
+	# Tırnaklar: halkadan İÇERİ uzanan 4 çizgi (boşlukların ortasından).
+	for k in range(4):
+		var a := rot + PI * 0.5 * float(k)
+		var dirv := Vector2(cos(a), sin(a))
+		ic.draw_line(c + dirv * (r + 3.0), c + dirv * (r - 7.0), red, 2.6)
+	# İnce iç artı (merkeze değmez — hedef noktası nefes alsın).
+	for k in range(4):
+		var a := rot + PI * 0.5 * float(k)
+		var dirv := Vector2(cos(a), sin(a))
+		ic.draw_line(c + dirv * 9.0, c + dirv * 4.5, Color(red.r, red.g, red.b, 0.75), 1.6)
+	# Merkez nokta + dışına çok ince soluk halka.
+	ic.draw_circle(c, 2.2, Color(1.0, 0.42, 0.32))
+	ic.draw_arc(c, 12.5, 0, TAU, 28, Color(red.r, red.g, red.b, 0.28), 1.2, true)
+
+
 func _on_day_btn() -> void:
 	# Onay/koruma akışı board'da (AĞIL seçimi ilk basışta açılır — yanlış basış emniyeti
 	# de oradan gelir: gece ancak İKİNCİ basışta ya da kart seçilince çöker).
 	day_end_requested.emit()
 
 
-## Gece butonu: koyu indigo yuvarlak (dalgalı siyah border _draw'da).
+## Gece butonu: koyu antrasit (indigo alt-ton) daire; gri-siyah halka _draw'da.
 func _style_night_button(btn: Button) -> void:
-	var base := Color("223055")
+	var base := Color("14161d")
 	for state in ["normal", "hover", "pressed"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = base if state == "normal" else (base.lightened(0.14) if state == "hover" else base.darkened(0.25))
+		sb.bg_color = base if state == "normal" else (base.lightened(0.10) if state == "hover" else base.darkened(0.3))
 		sb.set_corner_radius_all(46)  # tam daire
 		sb.set_border_width_all(0)
 		btn.add_theme_stylebox_override(state, sb)
@@ -316,14 +468,15 @@ func _style_night_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_hover_color", Color("ffffff"))
 
 
-## Yuvarlak "ritüel" butonu: göz kırmızısı daire; safran border YOK (dalgalanan
-## siyah border _draw'da butonun arkasına çizilir).
+## Ayıkla butonu: koyu antrasit (kızıl alt-ton) daire — kızıl göz ikonu üstünde
+## patlar; görünür gri-siyah halka _draw'daki _draw_button_frame'den gelir.
 func _style_round_button(btn: Button) -> void:
+	var base := Color("1a1013")
 	for state in ["normal", "hover", "pressed"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = EYE_RED.darkened(0.28) if state == "normal" else (EYE_RED.lightened(0.06) if state == "hover" else EYE_RED.darkened(0.5))
+		sb.bg_color = base if state == "normal" else (base.lightened(0.10) if state == "hover" else base.darkened(0.35))
 		sb.set_corner_radius_all(58)  # yarıçap = boyut/2 -> tam daire
-		sb.set_border_width_all(0)     # sarı border kaldırıldı
+		sb.set_border_width_all(0)
 		btn.add_theme_stylebox_override(state, sb)
 	btn.add_theme_color_override("font_color", Color("fff2dc"))
 	btn.add_theme_color_override("font_hover_color", Color("fff2dc"))
@@ -365,11 +518,14 @@ func update_all() -> void:
 	if GameState.village == null:
 		return
 	var v := GameState.village
-	if v.kills_per_night >= 2:
+	if v.night_rule == Enums.NightRule.FARTHEST:
+		_quest_label.text = "SİSLİ GECE — kurt EN UZAK koyunu avlıyor!" \
+				+ ("  (gecede %d av)" % v.kills_per_night if v.kills_per_night >= 2 else "")
+	elif v.kills_per_night >= 2:
 		_quest_label.text = "Kurtları bul! Sürü gecede %d kurban veriyor" % v.kills_per_night
 	else:
 		_quest_label.text = "Kurtları bul — her gece bir koyun can veriyor"
-	_progress_label.text = "Ayıklanan: %d / %d Kurt" % [GameState.executed_evil(), GameState.total_evil()]
+	_progress_label.text = "Avlanan: %d / %d Kurt" % [GameState.executed_evil(), GameState.total_evil()]
 	# Gün + sorgu hakkı pip'leri (● dolu, ○ boş).
 	var pips := ""
 	for i in range(max(v.q_per_day, v.questions_left)):
@@ -381,10 +537,10 @@ func update_all() -> void:
 		victims.append("#%d" % int(ev["victim"]))
 	_menu_strips[3]["visible"] = not victims.is_empty()
 	if not victims.is_empty():
-		_deaths_label.text = "☠ Kurbanlar: %s  (kurda en yakındılar)" % ", ".join(victims)
+		_deaths_label.text = "Kayıplar: %s  (kurda en yakındılar)" % ", ".join(victims)
 	if RunManager.has_active_run():
 		_village_label.text = "Köy: %d / %d" % [RunManager.current_index + 1, RunManager.nodes.size()]
-		_meta_label.text = "Ascension: %d   ·   Para: %d" % [RunManager.ascension + 1, RunManager.coins]
+		_meta_label.text = "Çile: %d   ·   Para: %d" % [RunManager.ascension + 1, RunManager.coins]
 		_menu_strips[5]["visible"] = true
 	else:
 		_village_label.text = "Sürü: %d hayvan" % v.n
@@ -399,14 +555,13 @@ func update_all() -> void:
 
 
 func set_execute_mode(on: bool) -> void:
+	_exec_mode = on
+	if _exec_icon != null:
+		_exec_icon.queue_redraw()
 	if on:
-		_execute_btn.text = "İptal"
-		_banner_label.text = "AYIKLAMA MODU — bir kart seç (yanlışsa -5 can)"
-		_banner_label.add_theme_color_override("font_color", Palette.BLOOD)
+		flash_banner("AV MODU — bir kart seç (yanlışsa −5 can)", Palette.BLOOD)
 	else:
-		_execute_btn.text = "Ayıkla"
-		_banner_label.text = "Sorgula (sol tık) · işaretle (sağ tık) · G: günü bitir"
-		_banner_label.add_theme_color_override("font_color", Palette.SAFFRON)
+		flash_banner("Sorgula (sol tık) · işaretle (sağ tık) · G: günü bitir", Palette.SAFFRON)
 
 
 ## Panel çerçeveleri + can küresi (radyal gauge).
@@ -420,8 +575,6 @@ func _draw() -> void:
 
 	# Kompozisyon — KOMPAKT banner (sağa bitişik) + yalnız küçük ikon+sayı (yazı yok).
 	var cox := _comp_off
-	# Mark lejantı — 4 köşesi pahlı, yüzen siyah panel (sağdan kayar).
-	_draw_panel_beveled(size.x - 486 + _legend_off, size.y - 150, 340, 116)
 
 	if GameState.village != null and font != null:
 		var v := GameState.village
@@ -445,31 +598,42 @@ func _draw() -> void:
 			draw_string_outline(font, np, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 3, Color("140a06"))
 			draw_string(font, np, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("fff2dc"))
 
-		# Gizli Kural (Omen) rozeti — kompozisyonun altında, kompakt banner (bilinirse).
-		if v.known_omen != Enums.OmenType.NONE:
+		# Gizli Kural (Omen) rozeti — kompozisyonun altında, kompakt banner.
+		# VARLIĞI her zaman ilan edilir (adalet §7.3 — kompozisyon gibi); içeriği
+		# ancak Müneccim/fal/tümdengelimle çözülünce görünür.
+		if v.omen_type != Enums.OmenType.NONE:
 			var ow := 360.0
 			_draw_banner(size.x - ow + 6 + cox, 90, ow + 4, 52, true)
-			draw_string(font, Vector2(size.x - ow + 60 + cox, 112), "◉ " + Omen.short_label(v.known_omen),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Palette.SAFFRON)
-			draw_string(font, Vector2(size.x - ow + 60 + cox, 132), Omen.hint(v.known_omen),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
+			if v.known_omen != Enums.OmenType.NONE:
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), "◉ " + Omen.short_label(v.known_omen),
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Palette.SAFFRON)
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), Omen.hint(v.known_omen),
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
+			else:
+				# Çözülmemiş: soluk, nabız gibi hafif yanıp sönen "???".
+				var oa := 0.55 + 0.25 * sin(_t * 2.2)
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 112), "◉ Gizli Kural: ???",
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(Palette.SAFFRON.r, Palette.SAFFRON.g, Palette.SAFFRON.b, oa))
+				draw_string(font, Vector2(size.x - ow + 60 + cox, 132), "Kurtların dizilişinde bir desen var — Müneccim'i sorgula ya da çöz.",
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Palette.IVORY.darkened(0.05))
 
-	# Ayıkla butonunun arkasına dalgalanan siyah border (butonun altında çizilir).
+	# Sağ-alt yuvarlak butonların çerçeveleri: görünür GRİ-SİYAH halka + gölge
+	# (dalgalı siyah diskler koyu zeminde kayboluyordu — kullanıcı geri bildirimi).
+	var ring_gray := Color(0.29, 0.29, 0.32)  # siyaha yakın koyu gri (kullanıcı isteği)
 	if _execute_btn != null:
 		var bc := _execute_btn.position + _execute_btn.size * 0.5
-		draw_circle(bc, 68.0, Color(0, 0, 0, 0.45))  # yumuşak gölge
-		# Merkez gözle aynı dalgalı siyah border (belirgin genlik + ikinci katman).
-		_draw_wavy_disc(bc, 65.0, Color(0.03, 0.006, 0.012, 1.0), _t * 1.1 + 2.0, 7.5)
-		_draw_wavy_disc(bc, 60.0, Color(0.05, 0.01, 0.02, 1.0), -_t * 0.8 + 2.0, 4.0)
+		# Av modunda çerçeve kızıla döner (tehlikeli mod açık sinyali).
+		_draw_button_frame(bc, 58.0, Palette.BLOOD.lightened(0.12) if _exec_mode else ring_gray, _execute_btn.is_hovered())
 	if _day_btn != null:
 		var dc := _day_btn.position + _day_btn.size * 0.5
 		# Sorgu hakları bitti → sıradaki hamle gece: buton nabız gibi çağırır.
 		if GameState.village != null and GameState.is_active() and GameState.village.questions_left <= 0:
 			var na := 0.30 + 0.30 * sin(_t * 4.0)
-			draw_arc(dc, 58.0 + 3.0 * sin(_t * 4.0), 0, TAU, 48, Color(0.62, 0.72, 1.0, na), 3.5)
-		draw_circle(dc, 55.0, Color(0, 0, 0, 0.45))
-		_draw_wavy_disc(dc, 52.0, Color(0.03, 0.006, 0.012, 1.0), _t * 1.1 + 4.0, 6.0)
-		_draw_wavy_disc(dc, 48.0, Color(0.05, 0.01, 0.02, 1.0), -_t * 0.8 + 4.0, 3.5)
+			draw_arc(dc, 60.0 + 3.0 * sin(_t * 4.0), 0, TAU, 48, Color(0.62, 0.72, 1.0, na), 3.5)
+		_draw_button_frame(dc, 46.0, ring_gray, _day_btn.is_hovered())
+	if _log_btn != null:
+		var lc := _log_btn.position + _log_btn.size * 0.5
+		_draw_button_frame(lc, 31.0, ring_gray, _log_btn.is_hovered())
 
 	var gc := Vector2(90.0 + _globe_off, size.y - 96.0) + _globe_shake
 	# Düşük can uyarısı: küre çevresinde nabız gibi atan kızıl halkalar.
@@ -482,29 +646,40 @@ func _draw() -> void:
 	_draw_wavy_disc(gc, GLOBE_R + 9.0, Color(0.03, 0.006, 0.012, 1.0), _t * 1.1, 8.0)
 	_draw_wavy_disc(gc, GLOBE_R + 3.0, Color(0.05, 0.01, 0.02, 1.0), -_t * 0.8, 4.0)
 	draw_circle(gc, GLOBE_R, Color("1a0c0a"))  # koyu taban
-	# Kalan can dolgusu — göz kırmızısı.
-	var fill_col := EYE_RED if _hp_display > 0.33 else EYE_RED.lerp(Color("4a0a06"), 0.5)
+	# Kalan can dolgusu — cana göre parlaktan koyu kana kayar (yumuşak).
+	var fill_col := Color("4a0a06").lerp(EYE_RED, clampf(_hp_display, 0.0, 1.0))
 	draw_circle(gc, GLOBE_R * 0.82 * maxf(_hp_display, 0.06), fill_col)
-	# Radyal gauge halkası (tepeden saat yönünde) — göz kırmızısı.
-	draw_arc(gc, GLOBE_R - 3.0, -PI * 0.5, -PI * 0.5 + TAU * _hp_display, 72, EYE_RED.lightened(0.2), 7.0)
-	draw_arc(gc, GLOBE_R - 3.0, -PI * 0.5 + TAU * _hp_display, PI * 1.5, 72, Color(0, 0, 0, 0.4), 7.0)
-	# Can sayısı (küre üstünde, konturlu).
+	# İç kenar gölgesi (küreye derinlik).
+	draw_arc(gc, GLOBE_R * 0.82, 0, TAU, 64, Color(0, 0, 0, 0.30), 3.0)
+	# Radyal gauge: koyu ray + parlak ilerleme yayı (tepeden saat yönünde).
+	draw_arc(gc, GLOBE_R - 3.0, 0, TAU, 72, Color(0, 0, 0, 0.5), 7.0)
+	if _hp_display > 0.003:
+		draw_arc(gc, GLOBE_R - 3.0, -PI * 0.5, -PI * 0.5 + TAU * _hp_display, 72, EYE_RED.lightened(0.2), 7.0)
 	if font != null and GameState.village != null:
-		var txt := "%d/%d" % [GameState.health, GameState.max_health()]
+		var maxhp := GameState.max_health()
+		# Segment tikleri: her can birimi için ince koyu çizgi (kadran hissi).
+		for i in range(maxhp):
+			var ta := -PI * 0.5 + TAU * float(i) / float(maxhp)
+			var tv := Vector2(cos(ta), sin(ta))
+			draw_line(gc + tv * (GLOBE_R - 7.5), gc + tv * (GLOBE_R + 1.5), Color(0.05, 0.02, 0.02, 0.85), 2.0)
+		# Can sayısı (küre üstünde, konturlu).
+		var txt := "%d/%d" % [GameState.health, maxhp]
 		var fs := int(30.0 * _hp_num_scale)
 		var tsize := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		var tpos := gc + Vector2(-tsize.x * 0.5, tsize.y * 0.33)
 		draw_string_outline(font, tpos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color("1a0606"))
 		draw_string(font, tpos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("fff2dc"))
-		# Kalp pip'leri (her kalp = 2 can), kürenin altında.
-		var hearts := int(ceil(GameState.max_health() / 2.0))  # her kalp = 2 can (Bereket'te 6 kalp)
-		var filled := int(round(GameState.health / 2.0))
-		var hy := gc.y + GLOBE_R + 16.0
-		var hx0 := gc.x - (hearts - 1) * 11.0
-		for i in range(hearts):
-			var hc := i < filled
-			_draw_heart(Vector2(hx0 + i * 22.0, hy), 8.0,
-				Palette.BLOOD if hc else Color("2a1414"))
+		# Segmentli can barı (kürenin altında): her birim ince bir çubuk.
+		var seg_w := 7.0
+		var seg_gap := 3.0
+		var bw := maxhp * seg_w + (maxhp - 1) * seg_gap
+		var bx := gc.x - bw * 0.5
+		var by := gc.y + GLOBE_R + 13.0
+		for i in range(maxhp):
+			var filled := i < GameState.health
+			var r := Rect2(Vector2(bx + i * (seg_w + seg_gap), by), Vector2(seg_w, 7.0))
+			draw_rect(r.grow(1.0), Color(0, 0, 0, 0.75), true)
+			draw_rect(r, EYE_RED.lightened(0.08) if filled else Color("2a1414"), true)
 
 
 ## Kompozisyon rozeti: prosedürel ikon + altında sayı + kategori adı (referans stili).
@@ -551,18 +726,6 @@ func _draw_comp_icon(kind: String, c: Vector2, col: Color) -> void:
 			draw_circle(c, 9.0, col)
 
 
-## Basit kalp: iki daire + üçgen.
-func _draw_heart(c: Vector2, s: float, col: Color) -> void:
-	draw_circle(c + Vector2(-s * 0.45, -s * 0.15), s * 0.5, col)
-	draw_circle(c + Vector2(s * 0.45, -s * 0.15), s * 0.5, col)
-	var pts := PackedVector2Array([
-		c + Vector2(-s * 0.92, 0.0),
-		c + Vector2(s * 0.92, 0.0),
-		c + Vector2(0.0, s * 0.95),
-	])
-	draw_colored_polygon(pts, col)
-
-
 func _on_damaged(_amount: int, hp: int) -> void:
 	_hp_animating = true
 	var target := float(hp) / float(GameState.max_health())
@@ -594,16 +757,28 @@ func _set_hp(v: float) -> void:
 
 
 func _on_executed(_seat: int, was_evil: bool) -> void:
-	if was_evil:
-		flash_banner("✔ Kurt ayıklandı!", Palette.SAFFRON)
-	else:
-		flash_banner("✘ Ouch! Masum bir koyundu. -5 can", Palette.BLOOD)
+	# Kurt avında banner YOK — sinematik (yırtılma + replik) anlatıyor; banner
+	# aynı anda binince ekran karmaşıklaşıyordu. İlerleme etiketi zaten güncellenir.
+	if not was_evil:
+		flash_banner("✘ Yanlış — masum bir koyundu. −5 can", Palette.BLOOD)
 	update_all()
 
 
 func flash_banner(text: String, color: Color) -> void:
-	_banner_label.text = text
-	_banner_label.add_theme_color_override("font_color", color)
+	if _banner != null:
+		_banner.show_message(text, color)
+
+
+## Board'un sahiplendiği duyuru şeridini bağla (gece HUD kaybolsa da şerit kalır).
+func attach_banner(b: RibbonBanner) -> void:
+	_banner = b
+
+
+## Gece çökerken HUD tamamen çekilir — paneller, rozetler, butonlar gider;
+## sahnede yalnız gökyüzü, kartlar ve duyuru şeridi kalır (tam daldırma).
+func set_night_dim(a: float) -> void:
+	modulate.a = 1.0 - a
+	visible = a < 0.98
 
 
 func _on_won(score: int) -> void:
@@ -615,6 +790,11 @@ func _on_won(score: int) -> void:
 
 
 func _on_lost(reason: String) -> void:
+	# Board'un kaybediş sinematiği (~3.2 sn) oynasın; sefer modunda bu sırada
+	# sonuç ekranına geçilir (overlay hiç görünmez — istenen bu).
+	await get_tree().create_timer(3.4).timeout
+	if not is_inside_tree():
+		return
 	_overlay.visible = true
 	_overlay_label.text = "SÜRÜ KURTLARA YEM OLDU\n(%s)" % reason
 	_overlay_label.add_theme_color_override("font_color", Palette.BLOOD)

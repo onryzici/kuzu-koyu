@@ -24,6 +24,20 @@ const VOICE := {
 	&"Architect": "Değirmenden baktım: ",
 	&"Lover": "Yüreğim diyor ki ",
 	&"Gossip": "Duyduğuma göre ",
+	&"Healer": "Nabzını tuttum: ",
+	&"Weaver": "Tezgâhımda dokudum: ",
+	&"Midwife": "Bu köyde herkesi doğurttum — ",
+	&"Milkmaid": "Süt yolunda gördüm: ",
+	&"Crier": "Duyduk duymadık demeyin! ",
+	&"Beekeeper": "Arılarım fısıldadı: ",
+	&"Sheepdog": "Hrrr... kokusunu aldım: ",
+	&"Shearer": "Yününü kırktım, tarttım: ",
+	&"Drummer": "Davulumun yankısı söyledi: ",
+	&"Welldigger": "Kuyunun suyu yansıttı: ",
+	&"Beadcounter": "Tespihimi çektim, saydım: ",
+	&"Skittish": "T-titriyorum ama biliyorum: ",
+	&"Tailor": "Arşınımla ölçtüm: ",
+	&"Mirrorwright": "Aynam yansıttı: ",
 }
 
 
@@ -46,12 +60,16 @@ static func _body(role: StringName, t: TestimonyClaim, rng: RandomNumberGenerato
 					"Şu #%d'den kan kokusu geliyor — kurt bu." % s,
 					"#%d sürüden değil; kılık değiştirmiş bir kurt." % s,
 					"#%d'e sakın güvenmeyin, o bir kurt." % s,
+					"Gece #%d'nin gözleri parlıyor — kurt gözü o." % s,
+					"#%d koyun gibi meliyor ama dişleri sivri: KURT." % s,
 				])
 			return _pick(rng, [
 				"#%d temiz, bizden biri." % s,
 				"#%d'e kefilim, o koyun." % s,
 				"#%d'de kurt yok, içiniz rahat olsun." % s,
 				"#%d tertemiz bir koyun." % s,
+				"#%d'nin yüreği koyun yüreği; korkmayın ondan." % s,
+				"#%d bizden — postu da kendi postu." % s,
 			])
 
 		Enums.TestimonyType.COUNT_IN_SET:
@@ -104,6 +122,7 @@ static func _body(role: StringName, t: TestimonyClaim, rng: RandomNumberGenerato
 				"en yakın kurt %d adım ötede." % d,
 				"en yakın kurtla aramda %d kart var." % d,
 				"buradan sayınca en yakın kurt %d uzakta." % d,
+				"tam %d kart ötemde bir kurt soluk alıyor." % d,
 			])
 
 		Enums.TestimonyType.NEAREST_EVIL_DIRECTION:
@@ -141,6 +160,53 @@ static func _body(role: StringName, t: TestimonyClaim, rng: RandomNumberGenerato
 			return _pick(rng, [
 				"#%d ile #%d ayrı saftan — biri koyun, biri kurt." % [x, y],
 				"#%d ve #%d zıt taraflarda." % [x, y],
+				"#%d ile #%d aynı sürüden değil; biri post giymiş." % [x, y],
+			])
+
+		Enums.TestimonyType.COUNT_PARITY_IN_SET:
+			var lstp := _seat_list(t.targets)
+			if t.bool_val:
+				return _pick(rng, [
+					"şu kartlardaki (%s) kurt sayısı ÇİFT — hiç de olabilir, iki de." % lstp,
+					"%s içindeki kurtları saydım: çift çıktı, tespih artmadı." % lstp,
+					"%s — bu kartlarda çift sayıda kurt var, tek değil." % lstp,
+				])
+			return _pick(rng, [
+				"şu kartlardaki (%s) kurt sayısı TEK." % lstp,
+				"%s içinde tek sayıda kurt var — bir tane artık kaldı tespihte." % lstp,
+				"%s — bu kartlarda tek sayıda kurt saklanıyor." % lstp,
+			])
+
+		Enums.TestimonyType.NEAREST_EVIL_MIN_DIST:
+			if t.compare == Enums.Compare.GREATER:
+				return _pick(rng, [
+					"en yakın kurt bile bana %d adımdan UZAK." % t.number,
+					"çevremde %d adım içinde kurt yok — o kadarına eminim." % t.number,
+					"kurt kokusunu ancak uzaktan alıyorum; %d adımdan ötede." % t.number,
+				])
+			return _pick(rng, [
+				"kurt bana %d adımdan YAKIN... ensemde hissediyorum." % t.number,
+				"aramızda %d adım bile yok — kurt dibimde bir yerde." % t.number,
+				"%d adımdan yakında bir kurt var, titremem ondan." % t.number,
+			])
+
+		Enums.TestimonyType.WOLF_GAP:
+			return _pick(rng, [
+				"en yakın iki kurdun arası tam %d adım." % t.number,
+				"kurtların arasını arşınladım: %d adım çıktı." % t.number,
+				"iki kurt %d adım arayla oturuyor — kumaş gibi ölçtüm." % t.number,
+			])
+
+		Enums.TestimonyType.OPPOSITE_ALIGNMENT:
+			var osx: int = t.targets[0]
+			if t.alignment == Enums.Alignment.EVIL:
+				return _pick(rng, [
+					"tam karşımdaki #%d'nin yansıması KURT gösteriyor." % osx,
+					"aynayı karşıya tuttum: #%d'nin postu altında kurt var." % osx,
+				])
+			return _pick(rng, [
+				"tam karşımdaki #%d temiz — ayna yalan söylemez." % osx,
+				"karşımdaki #%d'nin yansıması dupduru: koyun." % osx,
 			])
 
 		_:

@@ -18,14 +18,15 @@ func _ready() -> void:
 	visible = false
 	custom_minimum_size = Vector2(WIDTH, 0)
 
+	# Bordersız koyu panel + geniş yumuşak gölge (referans dili: siyah yüzen kutu).
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("140a14ee")
-	sb.set_corner_radius_all(10)
-	sb.border_color = Palette.SAFFRON.darkened(0.15)
-	sb.set_border_width_all(2)
-	sb.set_content_margin_all(12)
-	sb.shadow_color = Color(0, 0, 0, 0.6)
-	sb.shadow_size = 8
+	sb.bg_color = Color("120a12f2")
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(0)
+	sb.set_content_margin_all(13)
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 14
+	sb.shadow_offset = Vector2(0, 4)
 	add_theme_stylebox_override("panel", sb)
 
 	var vb := VBoxContainer.new()
@@ -68,7 +69,7 @@ func show_for(seat: int, card_rect: Rect2, screen: Vector2, avoid_side := "right
 	if not truth_known and c.is_evil():
 		shown_cat = Enums.Category.VILLAGER  # koyun postunda
 		shown_evil = false
-	if not truth_known and c.category == Enums.Category.OUTCAST and c.role != &"Saint":
+	if not truth_known and c.category == Enums.Category.OUTCAST and c.role != &"Saint" and c.role != &"Jinxed":
 		shown_cat = Enums.Category.VILLAGER  # sarhoş kendini köylü sanır
 	var cat_col := Palette.category_color(shown_cat)
 	_title.text = RoleNames.display(shown_role)

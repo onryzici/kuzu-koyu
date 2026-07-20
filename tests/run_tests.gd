@@ -151,6 +151,43 @@ func _test_testimony() -> void:
 	t5.bool_val = true
 	check(t5.evaluate(world), "PAIR_RELATION same true")
 
+	# --- Yeni matematik tipleri (Tespihçi/Ürkek/Terzi/Aynacı) ---
+	var t6 := TestimonyClaim.new()
+	t6.type = Enums.TestimonyType.COUNT_PARITY_IN_SET
+	t6.targets = [0, 1, 2, 3]  # kurtlar {1,3} -> 2 kurt = ÇİFT
+	t6.bool_val = true
+	check(t6.evaluate(world), "PARITY çift true")
+	t6.targets = [0, 1, 2]  # 1 kurt = TEK
+	check(not t6.evaluate(world), "PARITY tek iken çift iddiası false")
+
+	var t7 := TestimonyClaim.new()
+	t7.type = Enums.TestimonyType.NEAREST_EVIL_MIN_DIST
+	t7.speaker = 0  # en yakın kurt #1, d=1
+	t7.compare = Enums.Compare.LESS
+	t7.number = 2
+	check(t7.evaluate(world), "MIN_DIST d=1 < 2 true")
+	t7.compare = Enums.Compare.GREATER
+	check(not t7.evaluate(world), "MIN_DIST d=1 > 2 false")
+
+	var t8 := TestimonyClaim.new()
+	t8.type = Enums.TestimonyType.WOLF_GAP
+	t8.number = 2  # kurtlar 1 ve 3 -> arası 2
+	check(t8.evaluate(world), "WOLF_GAP 2 true")
+	t8.number = 1
+	check(not t8.evaluate(world), "WOLF_GAP 1 false")
+
+	var t9 := TestimonyClaim.new()
+	t9.type = Enums.TestimonyType.OPPOSITE_ALIGNMENT
+	t9.speaker = 0
+	t9.alignment = Enums.Alignment.GOOD
+	check(not t9.evaluate(world), "OPPOSITE tek n'de false (üretici kullanmaz)")
+	var world6 := {"n": 6, "alignment": [
+		Enums.Alignment.GOOD, Enums.Alignment.EVIL, Enums.Alignment.GOOD,
+		Enums.Alignment.EVIL, Enums.Alignment.GOOD, Enums.Alignment.GOOD,
+	], "evil_seats": [1, 3]}
+	t9.alignment = Enums.Alignment.EVIL  # 0'ın karşısı 3 -> kurt
+	check(t9.evaluate(world6), "OPPOSITE çift n'de kurt true")
+
 
 # -------------------------------------------------------------------
 func _test_solver() -> void:
@@ -280,6 +317,60 @@ func _test_night_engine() -> void:
 	check(stg.get_character(2).is_alive(), "ağıla alınan #2 geceyi sağ atlattı")
 	check(stg.get_character(4).night_killed, "kurt bir sonraki en yakını (#4) aldı")
 
+	# --- SİSLİ GECE (FARTHEST): kurt en UZAK koyunu avlar ---
+	var alf: Array = []
+	for i in range(7):
+		alf.append(Enums.Alignment.GOOD)
+	alf[0] = Enums.Alignment.EVIL
+	var alive7 := [0, 1, 2, 3, 4, 5, 6]
+	eq(NightEngine.pick_victim(alf, alive7, 7, -1, Enums.NightRule.NEAREST), 1, "yakın av: #1")
+	eq(NightEngine.pick_victim(alf, alive7, 7, -1, Enums.NightRule.FARTHEST), 3, "sisli av: en uzak #3")
+	var stf := _make_state(7, [0])
+	stf.night_rule = Enums.NightRule.FARTHEST
+	NightEngine.apply(stf)
+	check(stf.get_character(3).night_killed, "apply sisli kuralla #3'ü aldı")
+	check(NightEngine.consistent_with_nights(
+		alf, stf.night_events, 7), "sisli olay gerçek dünyayla tutarlı")
+
+	# --- TUZAK: av kapana denk gelirse kurban ölmez, saldıran kurt yakalanır ---
+	var ts := _make_state(5, [2])
+	ts.trap_seat = 1  # kurt #2'ye en yakın koyun #1 (eşitlikte küçük seat)
+	eq(NightEngine.apply(ts), -2, "tuzak tetiklendi (-2)")
+	check(ts.get_character(2).revealed, "yakalanan kurt (#2) açıldı")
+	check(ts.get_character(1).is_alive(), "kapandaki koyun (#1) sağ")
+	eq(ts.trap_seat, -1, "kapan geceyle tüketildi")
+	var tev: Dictionary = ts.night_events.back()
+	eq(int(tev.get("caught", -1)), 2, "saldıran kurt olaya kaydedildi")
+	var al5: Array = []
+	for c in ts.characters:
+		al5.append(c.alignment)
+	check(NightEngine.consistent_with_nights(al5, ts.night_events, 5), "tuzak olayı gerçekle tutarlı")
+	var bad5: Array = al5.duplicate()
+	bad5[2] = Enums.Alignment.GOOD
+	bad5[4] = Enums.Alignment.EVIL
+	check(not NightEngine.consistent_with_nights(bad5, ts.night_events, 5), "tuzak kaydı yanlış dünyayı eler")
+
+	# --- arm_trap akışı + Uğursuz sorgu bedeli ---
+	var tg := _make_state(5, [2])
+	tg.get_character(0).role = &"Trapper"
+	GameState.start_village(tg)
+	GameState.arm_trap(0, 1)
+	eq(tg.trap_seat, 1, "arm_trap kapanı kurdu")
+	check(tg.get_character(0).ability_used, "Tuzakçı yeteneği harcandı")
+	var jg := _make_state(5, [2])
+	jg.get_character(3).role = &"Jinxed"
+	jg.get_character(3).category = Enums.Category.OUTCAST
+	var jclaim := TestimonyClaim.new()
+	jclaim.type = Enums.TestimonyType.SELF_ANCHOR
+	jclaim.speaker = 3
+	jclaim.text = "nazar testi"
+	jg.get_character(3).claims = [jclaim]
+	GameState.start_village(jg)
+	var hp0 := GameState.health
+	GameState.question(3)
+	eq(GameState.health, hp0 - 1, "Uğursuz sorgusu -1 can")
+	GameState.village = null
+
 
 # -------------------------------------------------------------------
 func _test_generator() -> void:
@@ -393,11 +484,18 @@ func _test_omen() -> void:
 	check(Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [3, 4, 5], n), "ARC bitişik")
 	check(Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [8, 0, 1], n), "ARC wrap bitişik")
 	check(not Omen.satisfies(Enums.OmenType.CONTIGUOUS_ARC, {}, [0, 2, 4], n), "ARC dağınık -> yanlış")
+	# Yeni omenler: Mühür Terazisi (eşit uzaklık) + Tek Yaka.
+	check(Omen.satisfies(Enums.OmenType.SEAL_EQUIDISTANT, {}, [2, 7], n), "TERAZİ 2,7 -> d=2,2")
+	check(not Omen.satisfies(Enums.OmenType.SEAL_EQUIDISTANT, {}, [1, 3], n), "TERAZİ d=1,3 -> yanlış")
+	check(Omen.satisfies(Enums.OmenType.SAME_SIDE, {}, [1, 4], n), "TEK YAKA sağ")
+	check(Omen.satisfies(Enums.OmenType.SAME_SIDE, {}, [5, 8], n), "TEK YAKA sol")
+	check(not Omen.satisfies(Enums.OmenType.SAME_SIDE, {}, [1, 5], n), "iki yaka -> yanlış")
+	check(not Omen.satisfies(Enums.OmenType.SAME_SIDE, {}, [0, 3], n), "mühürde kurt -> yanlış")
 	check(Omen.satisfies(Enums.OmenType.DISPERSED, {}, [0, 2, 4], n), "DISPERSED komşusuz")
 	check(not Omen.satisfies(Enums.OmenType.DISPERSED, {}, [0, 1], n), "DISPERSED komşu -> yanlış")
 	check(Omen.satisfies(Enums.OmenType.MIRROR, {}, [1, 3], 8), "MIRROR simetrik (eksen 2)")
 
-	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR]:
+	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR, Enums.OmenType.SEAL_EQUIDISTANT, Enums.OmenType.SAME_SIDE]:
 		var placements := Omen.valid_placements(otype, {}, n, 2)
 		check(placements.size() > 0, "valid_placements boş değil (tip %d)" % otype)
 		var all_ok := true
@@ -413,7 +511,7 @@ func _test_omen() -> void:
 	var determined_ok := 0
 	var omen_ok := 0
 	var has_astro := 0
-	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR]:
+	for otype in [Enums.OmenType.PARITY, Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.DISPERSED, Enums.OmenType.MIRROR, Enums.OmenType.SEAL_EQUIDISTANT, Enums.OmenType.SAME_SIDE]:
 		for s in range(40):
 			rng.seed = 4200 + otype * 1000 + s
 			var conf := {"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": otype, "seed": rng.seed}
@@ -622,24 +720,42 @@ func _test_ascension() -> void:
 	_section_start("Ascension kapsama (tüm düğümler üretilebilir mi)")
 
 	var fails: Array = []
+	var tried := 0
 	for asc in range(7):
 		var nodes: Array = RunManager._build_map(asc, 55555)
 		for i in range(nodes.size()):
+			# Dükkân/olay durakları köy üretmez — atla.
+			var nt: int = nodes[i]["type"]
+			if nt == Enums.NodeType.SHOP or nt == Enums.NodeType.EVENT:
+				continue
 			var cfg: Dictionary = nodes[i]["config"]
 			var rng := RandomNumberGenerator.new()
 			rng.seed = int(cfg["seed"])
 			var st: VillageState = VillageGenerator.generate(cfg, rng)
+			tried += 1
 			if st == null:
 				fails.append("asc%d/node%d" % [asc, i])
 	check(fails.is_empty(), "tüm ascension×düğüm üretilebilir (kırık: %s)" % str(fails))
-	print("  ascension kapsama: 7 asc × 5 düğüm = 35 köy denendi")
+	print("  ascension kapsama: %d köy denendi" % tried)
 
 	# V2 knob: A4 sorgu hakkını kısar.
 	var m4: Array = RunManager._build_map(4, 999)
 	eq(int(m4[1]["config"]["q_per_day"]), 2, "asc4: köy 1'de sorgu hakkı 3->2")
-	# Boss çifte av.
+	# Boss çifte av (boss artık son düğüm — dükkân/olay araya girdi; seed 999 → Aç Alfa).
 	var m0: Array = RunManager._build_map(0, 999)
-	eq(int(m0[4]["config"].get("kills_per_night", 1)), 2, "boss gecede 2 av")
+	eq(int(m0[m0.size() - 1]["config"].get("kills_per_night", 1)), 2, "boss gecede 2 av")
+
+	# Boss VARYANTLARI: her biri düşük ve yüksek çilede üretilebilir olmalı.
+	var bfails: Array = []
+	for bi in range(RunManager.BOSS_SPECS.size()):
+		for basc in [0, 6]:
+			var bcfg: Dictionary = RunManager._apply_ascension(RunManager.BOSS_SPECS[bi], basc, 4)
+			bcfg["seed"] = 91000 + bi * 100 + basc
+			var brng := RandomNumberGenerator.new()
+			brng.seed = int(bcfg["seed"])
+			if VillageGenerator.generate(bcfg, brng) == null:
+				bfails.append("boss%d/asc%d" % [bi, basc])
+	check(bfails.is_empty(), "boss varyantları üretilebilir (kırık: %s)" % str(bfails))
 
 
 # -------------------------------------------------------------------
@@ -739,17 +855,25 @@ func _test_run_manager() -> void:
 
 	rm.start_run(0, 999)
 	check(rm.has_active_run(), "sefer aktif")
-	eq(rm.nodes.size(), 5, "harita 5 düğüm (4 köy + boss)")
+	eq(rm.nodes.size(), 7, "harita 7 düğüm (4 köy + olay + dükkân + boss)")
 	eq(rm.current_index, 0, "başlangıç düğümü 0")
 	eq(int(rm.current_village_config()["n"]), 5, "ilk köy n=5")
 	check(rm.is_current_boss() == false, "ilk düğüm boss değil")
 	eq(rm.coins, 0, "başta 0 para")
+	eq(int(rm.nodes[2]["type"]), Enums.NodeType.EVENT, "3. düğüm OLAY")
+	eq(int(rm.nodes[4]["type"]), Enums.NodeType.SHOP, "5. düğüm DÜKKÂN")
 
-	for i in range(4):
-		rm.on_village_won(100, 8)
-	eq(rm.current_index, 4, "4 köy sonrası son düğümde")
+	# Haritayı boss'a kadar yürü: köyler kazanılır, duraklar tamamlanır.
+	while not rm.is_last_node():
+		var nt: int = rm.current_node()["type"]
+		if nt == Enums.NodeType.SHOP or nt == Enums.NodeType.EVENT:
+			rm.on_stop_completed()
+		else:
+			rm.on_village_won(100, 8)
+	eq(rm.current_index, 6, "boss'a gelindi (6. indeks)")
 	check(rm.is_current_boss(), "son düğüm boss")
 	eq(rm.last_outcome, Enums.RunOutcome.VILLAGE_WON, "ara sonuç VILLAGE_WON")
+	check(rm.nodes[2]["cleared"] and rm.nodes[4]["cleared"], "durak düğümleri tamamlandı")
 
 	var run_done := [false]
 	EventBus.run_completed.connect(func(_s, _c): run_done[0] = true, CONNECT_ONE_SHOT)
@@ -774,8 +898,12 @@ func _test_run_manager() -> void:
 	rm.start_daily()
 	check(rm.is_daily, "günlük sefer bayrağı")
 	eq(rm.run_seed, RunManager.today_int() * 7 + 3, "tohum tarihten türedi")
-	for i in range(5):
-		rm.on_village_won(100, 8)
+	while rm.has_active_run():
+		var dnt: int = rm.current_node()["type"]
+		if dnt == Enums.NodeType.SHOP or dnt == Enums.NodeType.EVENT:
+			rm.on_stop_completed()
+		else:
+			rm.on_village_won(100, 8)
 	eq(rm.stat_daily_date, RunManager.today_int(), "günlük rekor tarihi bugün")
 	eq(rm.stat_daily_best, 500, "günlük en iyi skor kaydedildi")
 	check(not rm.is_daily or not rm.active, "günlük sefer bitti")
@@ -787,7 +915,29 @@ func _test_run_manager() -> void:
 	GameState.start_village(bs)
 	eq(GameState.health, 12, "Bereket ile köy 12 canla başlar")
 	rm.owned_passives.clear()
+
+	# --- Olay ödülleri (pending_boons): sonraki köyde tüketilir ---
+	rm.pending_boons = [&"extra_q", &"extra_day"]
+	var bs2 := _make_state(5, [2])
+	var base_q: int = bs2.q_per_day
+	var base_days: int = bs2.max_days
+	GameState.start_village(bs2)
+	eq(bs2.q_per_day, base_q + 1, "olay ödülü: +1 sorgu/gün işledi")
+	eq(bs2.max_days, base_days + 1, "olay ödülü: +1 şafak işledi")
+	check(rm.pending_boons.is_empty(), "ödüller tüketildi (tek köylük)")
 	rm.active = false
+
+	# --- İfade Defteri altyapısı: sorgu günü kaydedilir ---
+	var ds := _make_state(5, [2])
+	var dtc := TestimonyClaim.new()
+	dtc.type = Enums.TestimonyType.SELF_ANCHOR
+	dtc.speaker = 0
+	dtc.text = "defter testi"
+	ds.get_character(0).claims = [dtc]
+	GameState.start_village(ds)
+	GameState.question(0)
+	eq(int(GameState.village.get_character(0).claim_days[0]), 1, "ifadenin günü kaydedildi")
+	GameState.village = null
 
 
 # -------------------------------------------------------------------
@@ -825,7 +975,7 @@ func _test_save_manager() -> void:
 	eq(rm.current_index, saved_index, "düğüm ilerlemesi geri geldi")
 	eq(rm.coins, saved_coins, "para geri geldi")
 	eq(rm.total_score, saved_score, "skor geri geldi")
-	eq(rm.nodes.size(), 5, "harita seed'den yeniden kuruldu")
+	eq(rm.nodes.size(), 7, "harita seed'den yeniden kuruldu")
 	check(rm.nodes[0]["cleared"] and rm.nodes[1]["cleared"], "temizlenen düğümler geri geldi")
 	eq(rm.stat_villages_cleared, saved_cleared, "rekor: kurtarılan köy geri geldi")
 
@@ -836,13 +986,18 @@ func _test_save_manager() -> void:
 
 func _expected_claim_type(role: StringName) -> int:
 	match role:
-		&"Judge", &"Confessor": return Enums.TestimonyType.ALIGNMENT_OF
-		&"Oracle", &"Dreamer": return Enums.TestimonyType.COUNT_IN_SET
-		&"Knight", &"Sentry": return Enums.TestimonyType.NEIGHBOR_HAS_EVIL
-		&"Scout": return Enums.TestimonyType.NEAREST_EVIL_DISTANCE
+		&"Judge", &"Confessor", &"Healer": return Enums.TestimonyType.ALIGNMENT_OF
+		&"Oracle", &"Dreamer", &"Midwife", &"Milkmaid", &"Crier", &"Beekeeper":
+			return Enums.TestimonyType.COUNT_IN_SET
+		&"Knight", &"Sentry", &"Sheepdog": return Enums.TestimonyType.NEIGHBOR_HAS_EVIL
+		&"Scout", &"Drummer": return Enums.TestimonyType.NEAREST_EVIL_DISTANCE
 		&"Enlightened": return Enums.TestimonyType.NEAREST_EVIL_DIRECTION
-		&"Architect": return Enums.TestimonyType.EVIL_COUNT_IN_REGION
-		&"Lover", &"Gossip": return Enums.TestimonyType.PAIR_RELATION
+		&"Architect", &"Shearer": return Enums.TestimonyType.EVIL_COUNT_IN_REGION
+		&"Lover", &"Gossip", &"Weaver", &"Welldigger": return Enums.TestimonyType.PAIR_RELATION
+		&"Beadcounter": return Enums.TestimonyType.COUNT_PARITY_IN_SET
+		&"Skittish": return Enums.TestimonyType.NEAREST_EVIL_MIN_DIST
+		&"Tailor": return Enums.TestimonyType.WOLF_GAP
+		&"Mirrorwright": return Enums.TestimonyType.OPPOSITE_ALIGNMENT
 		_: return Enums.TestimonyType.ALIGNMENT_OF
 
 

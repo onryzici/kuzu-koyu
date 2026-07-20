@@ -34,6 +34,28 @@ static func satisfies(otype: int, _params: Dictionary, evil_seats: Array, n: int
 		Enums.OmenType.MIRROR:
 			return _has_mirror_axis(evil_seats, n)
 
+		Enums.OmenType.SEAL_EQUIDISTANT:
+			# Tüm kurtlar MÜHRE (#0) eşit çember mesafesinde.
+			var d0 := BoardTopology.distance(int(evil_seats[0]), 0, n)
+			for s in evil_seats:
+				if BoardTopology.distance(int(s), 0, n) != d0:
+					return false
+			return true
+
+		Enums.OmenType.SAME_SIDE:
+			# Tüm kurtlar mühür ekseninin TEK yakasında (#0 ve karşısı eksende sayılmaz).
+			var has_right := false
+			var has_left := false
+			for s in evil_seats:
+				var si := int(s)
+				if si == 0 or (n % 2 == 0 and si == n / 2):
+					return false  # eksen üstünde kurt olamaz
+				if si < (n + 1) / 2:
+					has_right = true
+				else:
+					has_left = true
+			return not (has_right and has_left)
+
 		_:  # NONE / desteklenmeyen
 			return true
 
@@ -59,6 +81,10 @@ static func describe(otype: int) -> String:
 			return "Yıldızlar diyor ki: kurtlar dağınıktır — hiçbir ikisi komşu değil."
 		Enums.OmenType.MIRROR:
 			return "Yıldızlar diyor ki: kurt yerleşimi bir eksene göre aynalıdır (simetrik)."
+		Enums.OmenType.SEAL_EQUIDISTANT:
+			return "Yıldızlar diyor ki: kurtların hepsi mühre (#0) eşit uzaklıkta durur."
+		Enums.OmenType.SAME_SIDE:
+			return "Yıldızlar diyor ki: kurtlar mühür ekseninin tek yakasında toplanır."
 		_:
 			return ""
 
@@ -70,6 +96,8 @@ static func hint(otype: int) -> String:
 		Enums.OmenType.CONTIGUOUS_ARC: return "Kurtlar bitişik, kesintisiz bir yay."
 		Enums.OmenType.DISPERSED: return "Hiçbir iki kurt komşu değil."
 		Enums.OmenType.MIRROR: return "Kurt yerleşimi bir eksene göre simetrik."
+		Enums.OmenType.SEAL_EQUIDISTANT: return "Tüm kurtlar mühre (#0) eşit çember mesafesinde."
+		Enums.OmenType.SAME_SIDE: return "Tüm kurtlar mühür ekseninin aynı tarafında (#0 hariç)."
 		_: return ""
 
 
@@ -80,6 +108,8 @@ static func short_label(otype: int) -> String:
 		Enums.OmenType.CONTIGUOUS_ARC: return "Bitişik Yay"
 		Enums.OmenType.DISPERSED: return "Dağınık"
 		Enums.OmenType.MIRROR: return "Aynalı"
+		Enums.OmenType.SEAL_EQUIDISTANT: return "Mühür Terazisi"
+		Enums.OmenType.SAME_SIDE: return "Tek Yaka"
 		_: return ""
 
 

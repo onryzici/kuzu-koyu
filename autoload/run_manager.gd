@@ -20,10 +20,24 @@ const MAP_LENGTH := 5  # 4 köy + 1 boss (MVP doğrusal, §4)
 const BASE_SPECS := [
 	{"n": 5, "evil_count": 1, "demon_count": 1, "anchor_count": 1, "q_per_day": 3, "max_days": 4},
 	{"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "outcast_count": 1, "hunter": true, "q_per_day": 3, "max_days": 5},
-	{"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "omen_type": Enums.OmenType.PARITY, "slayer": true, "q_per_day": 3, "max_days": 5},
-	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "drunk_count": 1, "q_per_day": 3, "max_days": 5},
-	# Boss: çifte av — gecede 2 kurban. Sorgu hakkı +1 ile dengelenir (bot doğrular).
+	{"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "omen_type": Enums.OmenType.PARITY, "slayer": true, "jinxed_count": 1, "q_per_day": 3, "max_days": 5},
+	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "drunk_count": 1, "trapper": true, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 3, "max_days": 5},
+	# Boss: yer tutucu — gerçek boss BOSS_SPECS'ten sefer tohumuyla seçilir.
 	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "boss": true, "drunk_count": 1, "kills_per_night": 2, "q_per_day": 4, "max_days": 5},
+]
+
+## Alfa Kurt VARYANTLARI: her seferde tohuma göre biri seçilir — final hep aynı
+## olmasın. Hepsi üretici bot-bütçe garantisinden geçer (_test_ascension dener).
+const BOSS_SPECS := [
+	# Aç Alfa: gecede 2 av; +1 sorgu ile dengeli (klasik).
+	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "boss": true,
+		"boss_name": "AÇ ALFA", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 4, "max_days": 5},
+	# Gölge Sürüsü: 3 kurt (2+alfa), tek av — kalabalık sürü, geniş köy.
+	{"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "boss": true,
+		"boss_name": "GÖLGE SÜRÜSÜ", "drunk_count": 1, "kills_per_night": 1, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 4, "max_days": 5},
+	# Sabırsız Alfa: 2 av + kısılmış sorgu; karşılığında +1 şafak.
+	{"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "boss": true,
+		"boss_name": "SABIRSIZ ALFA", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 3, "max_days": 6},
 ]
 
 var active := false
@@ -39,6 +53,7 @@ var last_coins_awarded := 0
 var max_ascension_unlocked := 0
 var save_loaded := false  # kayıt bu oturumda bir kez yüklensin diye
 var owned_passives: Array = []  # sahip olunan muskalar (dükkândan, sefer boyu kalıcı)
+var pending_boons: Array = []   # olay ödülleri; sonraki köy başında tüketilir (GameState)
 
 # Kalıcı rekorlar/istatistik (§4 "All Saved Villages" + skor).
 var stat_villages_cleared := 0
@@ -64,16 +79,26 @@ func start_daily() -> void:
 
 ## Dükkân muskaları (kalıcı pasifler, §4). Etkileri GameState/RunManager'da uygulanır.
 const PASSIVES := {
-	&"zirh": {"name": "Zırh", "desc": "Yanlış ayıklama −5 yerine −3 can.", "price": 60},
+	&"zirh": {"name": "Zırh", "desc": "Yanlış av −5 yerine −3 can.", "price": 60},
 	&"kahin": {"name": "Kâhin Boncuğu", "desc": "Gizli Kural her köyde baştan bilinir.", "price": 85},
 	&"ugur": {"name": "Uğur Böceği", "desc": "Her köyde İLK gün +2 sorgu hakkı.", "price": 55},
 	&"kismet": {"name": "Kısmet Tılsımı", "desc": "Her köy kazancına +30 para.", "price": 70},
 	&"hafiza": {"name": "Hafıza Taşı", "desc": "HER gün +1 sorgu hakkı.", "price": 95},
-	&"kalkan": {"name": "Kalkan", "desc": "Her köyde İLK yanlış ayıklama hasarsız (bir kez).", "price": 90},
+	&"kalkan": {"name": "Kalkan", "desc": "Her köyde İLK yanlış av hasarsız (bir kez).", "price": 90},
 	&"pusula": {"name": "Pusula", "desc": "Her köyde İLK gece kurt avlanamaz (bir şafak kazan).", "price": 80},
-	&"kutsama": {"name": "Kutsama Suyu", "desc": "Ermiş'i ayıklarsan felaket olmaz, sadece can cezası.", "price": 75},
+	&"kutsama": {"name": "Kutsama Suyu", "desc": "Ermiş'i avlarsan felaket olmaz, sadece can cezası.", "price": 75},
 	&"bereket": {"name": "Bereket Boynuzu", "desc": "Maksimum can 10 → 12 (her köyde 12 ile başlarsın).", "price": 85},
+	&"cesaret": {"name": "Cesaret Tılsımı", "desc": "Kurt avladığında o gün +1 sorgu hakkı.", "price": 70},
+	&"sadaka": {"name": "Sadaka Kesesi", "desc": "Dükkân fiyatları %25 ucuz.", "price": 50},
 }
+
+
+## Muskanın bu seferki fiyatı (Sadaka Kesesi ile %25 indirim; kendisi hariç).
+func price_of(id: StringName) -> int:
+	var price: int = PASSIVES[id]["price"]
+	if has_passive(&"sadaka") and id != &"sadaka":
+		price = int(price * 0.75)
+	return price
 
 
 func has_passive(id: StringName) -> bool:
@@ -84,7 +109,7 @@ func has_passive(id: StringName) -> bool:
 func buy_passive(id: StringName) -> bool:
 	if has_passive(id) or not PASSIVES.has(id):
 		return false
-	var price: int = PASSIVES[id]["price"]
+	var price := price_of(id)
 	if coins < price:
 		return false
 	coins -= price
@@ -121,6 +146,7 @@ func start_run(ascension_level: int, seed: int) -> void:
 	last_village_score = 0
 	last_coins_awarded = 0
 	owned_passives = []
+	pending_boons = []
 	is_daily = false
 	active = true
 	EventBus.run_started.emit(ascension_level, seed)
@@ -130,13 +156,17 @@ func start_run(ascension_level: int, seed: int) -> void:
 const _OMEN_CYCLE := [
 	Enums.OmenType.PARITY, Enums.OmenType.DISPERSED,
 	Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.MIRROR,
+	Enums.OmenType.SEAL_EQUIDISTANT, Enums.OmenType.SAME_SIDE,
 ]
 
 
 func _build_map(asc: int, seed: int) -> Array:
 	var out: Array = []
 	for i in range(BASE_SPECS.size()):
-		var cfg := _apply_ascension(BASE_SPECS[i], asc, i)
+		var spec: Dictionary = BASE_SPECS[i]
+		if spec.get("boss", false):
+			spec = BOSS_SPECS[absi(seed) % BOSS_SPECS.size()]
+		var cfg := _apply_ascension(spec, asc, i)
 		cfg["seed"] = seed + (i + 1) * 98765
 		var is_boss: bool = cfg.get("boss", false)
 		out.append({
@@ -144,7 +174,22 @@ func _build_map(asc: int, seed: int) -> Array:
 			"config": cfg,
 			"cleared": false,
 		})
+	# Köyler arası mola düğümleri (§4): 2. köyden sonra OLAY, 3. köyden sonra DÜKKÂN.
+	# (insert sırası: önce arkadaki, indeksler kaymasın.)
+	out.insert(3, {"type": Enums.NodeType.SHOP, "config": {}, "cleared": false})
+	out.insert(2, {"type": Enums.NodeType.EVENT, "config": {}, "cleared": false})
 	return out
+
+
+## Dükkân/Olay düğümü tamamlandı: işaretle ve haritada ilerle (köy-dışı düğümler
+## için on_village_won muadili — para/skor vermez).
+func on_stop_completed() -> void:
+	if not active:
+		return
+	nodes[current_index]["cleared"] = true
+	current_index += 1
+	EventBus.run_map_advanced.emit(current_index)
+	SaveManager.save_game()
 
 
 ## Ascension katmanları (§7.2). Tutorial (n<=5, index 0) sade kalır; diğer düğümlere
@@ -152,6 +197,7 @@ func _build_map(asc: int, seed: int) -> Array:
 ## ascension×düğüm kombinasyonu null değil + tek-çözümlü).
 func _apply_ascension(spec: Dictionary, asc: int, node_index: int) -> Dictionary:
 	var cfg: Dictionary = spec.duplicate()
+	cfg["role_tier"] = asc  # rol açılımları: Çile yükseldikçe havuz genişler
 	var is_boss: bool = cfg.get("boss", false)
 	var is_tutorial: bool = int(cfg["n"]) <= 5
 	if is_tutorial:
@@ -284,6 +330,9 @@ func restore(data: Dictionary) -> void:
 		owned_passives = []
 		for p in run.get("owned_passives", []):
 			owned_passives.append(StringName(p))
+		pending_boons = []
+		for b in run.get("pending_boons", []):
+			pending_boons.append(StringName(b))
 		is_daily = bool(run.get("is_daily", false))
 		active = true
 	else:
@@ -313,6 +362,7 @@ func to_save_dict() -> Dictionary:
 			"total_score": total_score,
 			"cleared": cleared,
 			"owned_passives": owned_passives.map(func(p): return String(p)),
+			"pending_boons": pending_boons.map(func(b): return String(b)),
 			"is_daily": is_daily,
 		},
 	}

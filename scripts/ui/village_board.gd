@@ -7,6 +7,49 @@ extends Control
 const CardScene := preload("res://scenes/card.tscn")
 const HudScene := preload("res://scenes/hud.tscn")
 const BG_TEXTURE := preload("res://assets/art/bg/ritual_ground.png")
+const GRASS_TEXTURE := preload("res://assets/art/bg/grass_tufts.png")
+const GRASS_SHADER := preload("res://assets/art/bg/grass_sway.gdshader")
+const FOG_SHADER := preload("res://assets/art/bg/ground_fog.gdshader")
+
+# Bg'deki 5 ritüel mumunun alev konumları (bg uzayı, 3344x1882) — glow çizimi için.
+const CANDLE_SPOTS := [
+	Vector2(1685, 558),   # tepe
+	Vector2(1358, 832),   # sol-üst
+	Vector2(2047, 837),   # sağ-üst
+	Vector2(1500, 1158),  # sol-alt
+	Vector2(1906, 1157),  # sağ-alt
+]
+
+# Spritesheet'ten seçilmiş tutam kutuları (px; alfa bbox taramasıyla çıkarıldı).
+const GRASS_TUFTS := [
+	Rect2(396, 148, 160, 336),    # 0 dar/küçük
+	Rect2(2396, 176, 216, 324),   # 1 orta
+	Rect2(340, 616, 268, 292),    # 2 geniş
+	Rect2(1064, 592, 252, 320),   # 3 orta
+	Rect2(2012, 568, 196, 344),   # 4 sivri
+	Rect2(688, 1044, 256, 252),   # 5 basık
+	Rect2(2156, 1000, 104, 300),  # 6 ince
+	Rect2(340, 1064, 272, 228),   # 7 basık/geniş
+	Rect2(1108, 1416, 204, 304),  # 8 orta
+	Rect2(2028, 1416, 272, 304),  # 9 kafataslı
+	Rect2(1420, 564, 212, 348),   # 10 uzun
+]
+
+# Yerleşim: bg uzayında (3344x1882) tutamın TABAN-ORTA noktası. Arka planda çim
+# olmayan boşluklara serpiştirildi; cover ölçeğiyle birlikte bg'ye yapışık kalır.
+const GRASS_SPOTS := [
+	{"pos": Vector2(575, 940), "tuft": 2, "scale": 1.0, "flip": false},
+	{"pos": Vector2(790, 330), "tuft": 0, "scale": 0.8, "flip": false},
+	{"pos": Vector2(1240, 640), "tuft": 6, "scale": 0.9, "flip": false},
+	{"pos": Vector2(2260, 500), "tuft": 4, "scale": 0.9, "flip": true},
+	{"pos": Vector2(2560, 1380), "tuft": 3, "scale": 1.0, "flip": false},
+	{"pos": Vector2(950, 1690), "tuft": 8, "scale": 1.05, "flip": false},
+	{"pos": Vector2(1520, 1810), "tuft": 5, "scale": 0.95, "flip": true},
+	{"pos": Vector2(2160, 1720), "tuft": 9, "scale": 1.0, "flip": false},
+	{"pos": Vector2(3130, 1420), "tuft": 1, "scale": 0.9, "flip": true},
+	{"pos": Vector2(160, 1150), "tuft": 7, "scale": 0.95, "flip": true},
+	{"pos": Vector2(1920, 250), "tuft": 10, "scale": 0.75, "flip": false},
+]
 
 const VILLAGE_CONFIG := {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1}
 
@@ -20,6 +63,11 @@ const MARK_CYCLE := [
 
 var _cards: Array[CardView] = []
 var _hud: Hud
+var _grass_layer: Node2D            ## bg üstü, kartlar altı çim tutamları
+var _grass_sprites: Array[Sprite2D] = []
+var _grass_gust: Array[float] = []  ## tutam başına imleç itmesi (doku px, sönümlü)
+var _grass_wilt: Array[float] = []  ## tutam başına solma (0..1; kurban tepkisi)
+var _fog: ColorRect                 ## alçak zemin sisi (çim üstü, kart altı)
 var _tooltip: AbilityTooltip
 var _cine_dim: ColorRect      ## ayıklama sinematiğinde arka karartma
 var _night_layer: Control     ## gece göğü (indigo + hilal + yıldızlar)
@@ -41,7 +89,29 @@ var _time := 0.0
 var _sparks: Array = []           ## her biri: {x, y, vy, drift, size, phase, spd, warm}
 var _fx_rng := RandomNumberGenerator.new()
 var _eye_look := Vector2.ZERO     ## gözün YUMUŞATILMIŞ bakış yönü (her kare lerp)
+var _arm_tips: PackedVector2Array = PackedVector2Array()  ## kol uçları (kart yoklama)
 var _slots: Array = []            ## seat başına Rect2 — kesikli boş kart yeri
+var _blood_stains: Array = []     ## kalıcı kan izleri: {pos, blobs, alpha} (kurt öldü)
+var _blood_parts: Array = []      ## anlık kan SIÇRAMASI parçacıkları (ölüm ânı)
+var _burst_layer: Control         ## kanın kartların ÜSTÜNDE uçtuğu katman
+var _kill_label: Label            ## sinematikte kurdun son repliği
+# --- Dedüksiyon UX (yalnız görsel yardım; motor kararlarına dokunmaz) ---
+var _log: TestimonyLog            ## İfade Defteri (TAB / HUD butonu)
+var _ribbon: RibbonBanner         ## animasyonlu duyuru şeridi (flash_banner hedefi)
+var _tutorial: TutorialGuide      ## sefer ilk köyünde rehber (bir kez)
+var _worlds: Array = []           ## solver'ın tutarlı dünyaları (olay sonrası önbellek)
+var _conflicts: Dictionary = {}   ## seat -> Array[seat]: ikisi birden dürüst OLAMAZ
+var _night_preview := false       ## GECE butonu hover: olası kurbanlar vurgulu
+var _night_risk: Array = []       ## tutarlı dünyalara göre bu gece ölebilecekler
+# --- İfade görselleştirme: yön oku / mesafe yayı (yalnız görsel) ---
+# Yön (Yaşlı Koç) ve mesafe (İzci) ifadeleri çember üzerinde kavisli okla /
+# adım iziyle gösterilir. İfade verilince kısa süre otomatik, sonra hover'da.
+var _clue_seat := -1
+var _clue_hold := 0.0             ## otomatik gösterim için kalan süre (sn)
+var _clue_alpha := 0.0
+var _clue_prog := 0.0             ## okun çizilme ilerlemesi (0..1)
+const CLUE_VIOLET := Color(0.83, 0.56, 0.98)
+const CLUE_AMBER := Color(1.0, 0.78, 0.35)
 
 # 1–5 tuşları -> mark (Demon Bluff'taki gibi). 5 = temizle.
 const MARK_KEYS := {
@@ -56,16 +126,26 @@ const MARK_KEYS := {
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_fx_rng.randomize()  # kozmetik kıvılcımlar her açılışta farklı dağılsın
+	_build_grass()
 	_hud = HudScene.instantiate()
 	add_child(_hud)
 	_hud.execute_toggled.connect(_toggle_execute_mode)
 	_hud.day_end_requested.connect(_on_end_day)
 	_hud.restart_requested.connect(_new_village)
+	_hud.log_toggled.connect(func(): _log.toggle())
+	_hud.night_hover_changed.connect(_on_night_hover)
 	_tooltip = AbilityTooltip.new()
 	add_child(_tooltip)
+	_log = TestimonyLog.new()
+	add_child(_log)
+	# Duyuru şeridi BOARD'undur: gece HUD çekilirken duyurular görünür kalır.
+	_ribbon = RibbonBanner.new()
+	add_child(_ribbon)
+	_hud.attach_banner(_ribbon)
 	# Ayıklama sinematiği için karartma katmanı (kartların üstünde, zoom kartın altında).
 	_cine_dim = ColorRect.new()
-	_cine_dim.color = Color(0.02, 0.0, 0.01, 0.78)
+	# a=0.78 koyu portrelerde ekranı simsiyah bırakıyordu; kart yine öne çıkıyor.
+	_cine_dim.color = Color(0.02, 0.0, 0.01, 0.52)
 	_cine_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_cine_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cine_dim.z_index = 250
@@ -78,6 +158,15 @@ func _ready() -> void:
 	_night_layer.z_index = 200
 	_night_layer.draw.connect(_draw_night_layer)
 	add_child(_night_layer)
+	# Kan sıçraması katmanı: ölüm ânında damlalar kartların da ÜSTÜNDE uçar
+	# (referans: Demon Bluff ölüm sıçraması; bloody-pool shader'ın birleşen
+	# damla fikrinin 2D parçacık uyarlaması).
+	_burst_layer = Control.new()
+	_burst_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_burst_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_burst_layer.z_index = 310
+	_burst_layer.draw.connect(_draw_blood_parts)
+	add_child(_burst_layer)
 	resized.connect(_relayout)
 	_connect_events()
 	_new_village()
@@ -89,6 +178,14 @@ func _connect_events() -> void:
 	EventBus.question_denied.connect(_on_question_denied)
 	EventBus.night_passed.connect(_on_night_passed)
 	EventBus.slayer_used.connect(_on_slayer_used)
+	EventBus.trap_set.connect(func(_tr, target):
+		if _hud != null:
+			_hud.flash_banner("🪤 Kapan #%d'ye kuruldu — gece av oraya düşerse kurt yakalanır" % target, Palette.SAFFRON)
+		_refresh_cards())
+	EventBus.trap_sprung.connect(func(trapped, caught):
+		if _hud != null:
+			_hud.flash_banner("🪤 KAPAN KAPANDI! #%d'ye saldıran #%d bir KURTTU — postu düştü!" % [trapped, caught], Palette.SAFFRON)
+		_recompute_deduction())
 	EventBus.mark_changed.connect(func(_s, _m): _refresh_cards())
 	EventBus.village_won.connect(_on_village_won)
 	EventBus.village_lost.connect(_on_village_lost)
@@ -115,6 +212,9 @@ func _new_village() -> void:
 	_set_execute_mode(false)
 	_hovered_seat = -1
 	_night_count = 0
+	_blood_stains.clear()
+	_blood_parts.clear()
+	_sync_grass_night_tint()
 	_slayer_seat = -1
 	_protect_mode = false
 	if _tooltip != null:
@@ -122,12 +222,232 @@ func _new_village() -> void:
 	_spawn_cards(state.n)
 	_relayout()
 	_refresh_cards()
+	if _log != null:
+		_log.set_open(false)
+	_recompute_deduction()
 	_deal_cards()
 	_hud.play_intro()
-	# Tutorial köyünde (sefer başı) kısa yönlendirme (§12 katmanlı öğretim).
-	if RunManager.has_active_run() and RunManager.current_index == 0 and state.n <= 5:
-		_hud.flash_banner("Karakterlere tıklayıp SORGULA — kurt her ifadesinde yalan söyler. Gece basmadan bul!", Palette.SAFFRON)
+	_maybe_start_tutorial()
 	queue_redraw()
+
+
+## Sefer başı REHBER (§12): yalnız ilk düğümde ve daha önce tamamlanmadıysa.
+func _maybe_start_tutorial() -> void:
+	if _tutorial != null:
+		_tutorial.queue_free()
+		_tutorial = null
+	if not RunManager.has_active_run() or RunManager.current_index != 0:
+		return
+	if SaveManager.settings.get("tutorial_done", false):
+		return
+	_tutorial = TutorialGuide.new()
+	add_child(_tutorial)
+	_tutorial.finished.connect(func():
+		_tutorial = null
+		SaveManager.settings["tutorial_done"] = true
+		SaveManager.save_settings())
+	_tutorial.start()
+
+
+## Arka planda boş kalan yerlere spritesheet'ten çim tutamları serpiştirir.
+## Renk eşleme + dip koyulaştırma + salınım grass_sway.gdshader'da (§10.5).
+## Board'un kendi _draw'ı (bg + vinyet) tüm çocukların altında çizildiği için
+## katman ilk çocuk yapılır: bg üstünde, kartların/HUD'un altında kalır.
+func _build_grass() -> void:
+	_grass_layer = Node2D.new()
+	add_child(_grass_layer)
+	move_child(_grass_layer, 0)
+	var sheet_h := float(GRASS_TEXTURE.get_height())
+	for spot in GRASS_SPOTS:
+		var tuft: Rect2 = GRASS_TUFTS[spot.tuft]
+		var spr := Sprite2D.new()
+		spr.texture = GRASS_TEXTURE
+		spr.region_enabled = true
+		spr.region_rect = tuft
+		spr.centered = false
+		spr.offset = Vector2(-tuft.size.x * 0.5, -tuft.size.y)  # taban-orta pivot
+		spr.flip_h = spot.flip
+		var mat := ShaderMaterial.new()
+		mat.shader = GRASS_SHADER
+		mat.set_shader_parameter("region_v", Vector2(tuft.position.y / sheet_h, tuft.end.y / sheet_h))
+		mat.set_shader_parameter("phase", spot.pos.x * 0.011)
+		mat.set_shader_parameter("sway_px", tuft.size.x * 0.055)
+		spr.material = mat
+		_grass_layer.add_child(spr)
+		_grass_sprites.append(spr)
+		_grass_gust.append(0.0)
+		_grass_wilt.append(0.0)
+	# Alçak sis: çimlerin üstünde, kartların altında (child sırası: grass=0, fog=1).
+	_fog = ColorRect.new()
+	_fog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fog_mat := ShaderMaterial.new()
+	fog_mat.shader = FOG_SHADER
+	_fog.material = fog_mat
+	add_child(_fog)
+	move_child(_fog, 1)
+	# _ready sırasında size henüz oturmamış olabilir; bir kare sonra tekrar yerleştir.
+	_layout_grass.call_deferred()
+
+
+## Bg "cover" dönüşümü: [scale, offset]. Hem _draw hem çim yerleşimi bunu kullanır
+## ki tutamlar her pencere boyutunda bg ile aynı noktada dursun.
+func _bg_cover() -> Array:
+	var tex_size := Vector2(BG_TEXTURE.get_width(), BG_TEXTURE.get_height())
+	var s := maxf(size.x / tex_size.x, size.y / tex_size.y)
+	return [s, (size - tex_size * s) * 0.5]
+
+
+func _layout_grass() -> void:
+	if _grass_sprites.is_empty():
+		return
+	var cover := _bg_cover()
+	var s: float = cover[0]
+	var off: Vector2 = cover[1]
+	for i in range(GRASS_SPOTS.size()):
+		var spot: Dictionary = GRASS_SPOTS[i]
+		_grass_sprites[i].position = off + spot.pos * s
+		_grass_sprites[i].scale = Vector2.ONE * (s * spot.scale)
+
+
+## Gece kızıl tint'i board _draw'da overlay olarak çizilir ama o overlay çim
+## sprite'larının ALTINDA kalır — aynı tint shader uniform'uyla çime de uygulanır.
+func _sync_grass_night_tint() -> void:
+	var tint := minf(0.34, _night_count * 0.09) if _night_count > 0 else 0.0
+	for spr in _grass_sprites:
+		spr.material.set_shader_parameter("night_tint", tint)
+
+
+## Her kare: imleç esintisi (yakın tutamı it, sönümlü bırak), gece rüzgârı
+## (_night_alpha ile salınım çarpanı) ve solma sönümü. Yalnız görsel.
+func _update_grass_fx(delta: float) -> void:
+	if _grass_sprites.is_empty():
+		return
+	var mouse := get_local_mouse_position()
+	var wind := 1.0 + 1.5 * _night_alpha  # gece: rüzgâr sertleşir, şafakta diner
+	for i in range(_grass_sprites.size()):
+		var spr := _grass_sprites[i]
+		var half_h := spr.region_rect.size.y * spr.scale.y * 0.5
+		var mid := spr.position - Vector2(0.0, half_h)  # position = taban-orta
+		var dist := mouse.distance_to(mid)
+		var radius := spr.region_rect.size.x * spr.scale.x * 1.15
+		var target := 0.0
+		if dist < radius:
+			var away := signf(mid.x - mouse.x)
+			target = (away if away != 0.0 else 1.0) \
+					* (1.0 - dist / radius) * spr.region_rect.size.x * 0.13
+		_grass_gust[i] = lerpf(_grass_gust[i], target, minf(1.0, delta * 6.0))
+		_grass_wilt[i] = maxf(0.0, _grass_wilt[i] - delta * 0.35)  # ~3 sn'de toparlar
+		var mat: ShaderMaterial = spr.material
+		mat.set_shader_parameter("push_px", _grass_gust[i])
+		mat.set_shader_parameter("sway_mul", wind)
+		mat.set_shader_parameter("wilt", _grass_wilt[i])
+
+
+## Dedüksiyon yardımını tazele: solver dünyaları + çelişki çiftleri.
+## Her bilgi olayı (sorgu/gece/ayıklama/kılıç) sonrası çağrılır. n<=9 için ucuz.
+func _recompute_deduction() -> void:
+	_conflicts.clear()
+	_worlds = []
+	if GameState.village == null:
+		return
+	var v := GameState.village
+	_worlds = DeductionSolver.solve(v.visible_for_solver())
+	# Çelişki: konuşmuş (ve gerçek yüzü açılmamış) iki koltuk aynı anda dürüst-İYİ
+	# olamıyorsa ikisini de işaretle — "en az biri yalan söylüyor (ya da Sarhoş)".
+	var speakers: Array = []
+	for c in v.characters:
+		if c.given > 0 and not c.revealed:
+			speakers.append(c.seat)
+	for i in range(speakers.size()):
+		for j in range(i + 1, speakers.size()):
+			var a: int = speakers[i]
+			var b: int = speakers[j]
+			if not _can_both_be_honest(v, a, b):
+				if not _conflicts.has(a):
+					_conflicts[a] = []
+				if not _conflicts.has(b):
+					_conflicts[b] = []
+				_conflicts[a].append(b)
+				_conflicts[b].append(a)
+	for card in _cards:
+		card.conflict_hint = _conflicts.has(card.seat)
+		card.queue_redraw()
+	if _log != null and _log.is_open():
+		_log.refresh()
+	queue_redraw()
+
+
+## a ve b AYNI ANDA dürüst-İYİ olabilir mi? Kompozisyon + kefiller + cesetler +
+## bilinen kimlikler/Omen kısıtı altında ikisinin de tüm ifadeleri doğru olan tek
+## bir dünya bile yoksa → çelişki. (Sarhoş payı bilinçli olarak 0: "ikisinden biri
+## yanlış konuşuyor" bilgisi Sarhoş ihtimalinde de değerlidir; etiket bunu söyler.)
+func _can_both_be_honest(v: VillageState, a: int, b: int) -> bool:
+	var vis := {
+		"n": v.n,
+		"evil_count": v.evil_count,
+		"anchors": v.anchors.duplicate(),
+		"revealed": [],
+		"known": [
+			{"seat": a, "alignment": Enums.Alignment.GOOD},
+			{"seat": b, "alignment": Enums.Alignment.GOOD},
+		],
+		"nights": v.night_events,
+		"known_omen": v.known_omen,
+		"omen_params": v.omen_params,
+		"drunk_count": 0,
+	}
+	for s in [a, b]:
+		var c := v.get_character(s)
+		for k in range(c.given):
+			vis["revealed"].append({"seat": s, "testimony": c.claims[k]})
+	for c in v.characters:
+		if c.revealed and c.seat != a and c.seat != b:
+			vis["known"].append({"seat": c.seat, "alignment": c.alignment})
+	return not DeductionSolver.solve(vis).is_empty()
+
+
+## GECE butonu hover: Av Düzeni önizlemesi — tutarlı TÜM dünyalarda bu gece kimin
+## ölebileceğini (birleşim küme) gece mavisiyle vurgula. Cesetlerin kanıt değerini
+## oyuncuya öğreten en doğal araç: bakış "kurban → kurt konumu" yönünde kurulur.
+func _on_night_hover(hovering: bool) -> void:
+	_night_preview = hovering
+	_night_risk.clear()
+	if hovering and GameState.is_active():
+		var v := GameState.village
+		if _worlds.is_empty():
+			_recompute_deduction()
+		var alive := v.alive_seats()
+		var seen := {}
+		for w in _worlds:
+			var vic := NightEngine.pick_victim(w, alive, v.n, -1, v.night_rule)
+			if vic >= 0:
+				seen[vic] = true
+		_night_risk = seen.keys()
+	for card in _cards:
+		card.night_risk_hint = _night_preview and (card.seat in _night_risk)
+		card.queue_redraw()
+
+
+## Göz kolunun ucu bir karta değince kartı "yokla" (Balatro-vari dokunma tepkisi:
+## kart yana yaslanır + ürperir — kart.probe_touch). Sinematikte devre dışı.
+func _probe_cards() -> void:
+	if _cinematic or _arm_tips.is_empty():
+		return
+	for card in _cards:
+		var cc: Vector2 = card.position + card.size * 0.5
+		for tip in _arm_tips:
+			var d := cc.distance_to(tip)
+			if d < 85.0:
+				card.probe_touch(cc - tip, 1.0 - d / 85.0)
+
+
+## Gece kurbanının yakınındaki tutamlar solar (ceset izi). Mesafe ekran px'i.
+func _wilt_grass_near(pos: Vector2) -> void:
+	for i in range(_grass_sprites.size()):
+		var d := pos.distance_to(_grass_sprites[i].position)
+		if d < 300.0:
+			_grass_wilt[i] = maxf(_grass_wilt[i], 1.0 - d / 300.0)
 
 
 func _spawn_cards(n: int) -> void:
@@ -158,13 +478,27 @@ func _deal_cards() -> void:
 ## bölünme oynat.
 func _on_card_executed(seat: int, was_evil: bool) -> void:
 	_animate_seat(seat)
+	_recompute_deduction()
 	if was_evil and seat < _cards.size():
 		var card := _cards[seat]
 		await get_tree().create_timer(0.35).timeout  # flip (gerçek kurt yüzü) görünsün
 		await _play_execute_cinematic(card)
 
 
-## Kurt kartına yavaşça zoom + karart, sonra kartı fiziksel olarak ikiye böl.
+## Kurt ayıklanınca son bir replik söyler (referans: "Ugh, cheap shot...").
+const WOLF_LAST_WORDS := [
+	"Ahh... ucuz bir vuruştu bu...",
+	"Beni buldun demek, çoban...",
+	"Kokumu nereden aldın?..",
+	"Sürü... hâlâ bizim...",
+	"Bu daha bitmedi...",
+	"Postum düştü... ama dişlerim kaldı...",
+]
+
+
+## Kurt kartı OLDUĞU YERDE yırtılır (zoom/merkeze taşıma yok — kullanıcı kararı).
+## Sekans: hafif karartma + kart yerinde belirginleşir → replik → iki fazlı
+## yırtılma (çatlak + kopuş, ~1.7 sn) → toparlanma. Kan izi koltuğa işler.
 func _play_execute_cinematic(card: CardView) -> void:
 	_cinematic = true
 	if _tooltip != null:
@@ -172,29 +506,112 @@ func _play_execute_cinematic(card: CardView) -> void:
 	_cine_dim.visible = true
 	_cine_dim.modulate.a = 0.0
 	card.z_index = 300
-	var center_pos := Vector2(size.x * 0.5 - card.size.x * 0.5, size.y * 0.4 - card.size.y * 0.5)
+	card.hide_bubble()  # balon sinematikte kalabalık yapıyordu
+	# Kurdun koltuğuna kalıcı kan izi (kanıt/atmosfer; köy bitince temizlenir).
+	_spawn_blood_stain(card.position + card.size * 0.5)
 
+	# Sahne hafifçe kararır, kart yerinde bir tık büyüyüp öne çıkar.
 	var t := create_tween()
 	t.set_parallel(true)
-	t.tween_property(_cine_dim, "modulate:a", 1.0, 0.5)
-	t.tween_property(card, "position", center_pos, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	t.tween_property(card, "scale", Vector2(2.1, 2.1), 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.tween_property(_cine_dim, "modulate:a", 0.7, 0.4)
+	t.tween_property(card, "scale", Vector2(1.22, 1.22), 0.45) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await t.finished
 
-	await get_tree().create_timer(0.18).timeout
-	card.play_split()
-	await get_tree().create_timer(0.75).timeout
+	# Son replik: kartın hemen üstünde (ekran içinde kalacak şekilde kelepçeli).
+	var line_x := clampf(card.position.x + card.size.x * 0.5, 190.0, size.x - 190.0)
+	_show_kill_line(WOLF_LAST_WORDS[_fx_rng.randi_range(0, WOLF_LAST_WORDS.size() - 1)],
+		Vector2(line_x, card.position.y - 30.0))
+
+	await get_tree().create_timer(0.35).timeout
+	card.play_split(1.7)  # yırtılma seyredilsin: yavaş çatlak + kopuş
+	_spawn_blood_burst(card.position + card.size * 0.5)  # kopuş ânında sıçrama
+	await get_tree().create_timer(1.95).timeout
 	card.visible = false  # kurt yok oldu
+	card.scale = Vector2.ONE
 
 	var ft := create_tween()
-	ft.tween_property(_cine_dim, "modulate:a", 0.0, 0.4)
+	ft.tween_property(_cine_dim, "modulate:a", 0.0, 0.35)
 	await ft.finished
 	_cine_dim.visible = false
 	card.z_index = 0
 	_cinematic = false
 
 
-## SORGU: ifade alındı — balon pop + HUD tazele.
+## Anlık kan PATLAMASI: damlalar dışa savrulur, hız yönünde uzar, hızla söner.
+## Kalıcı iz ayrı (_spawn_blood_stain) — bu yalnız ölüm ânının şoku.
+func _spawn_blood_burst(pos: Vector2) -> void:
+	for i in range(22):
+		var a := _fx_rng.randf_range(0.0, TAU)
+		var spd := _fx_rng.randf_range(90.0, 380.0)
+		_blood_parts.append({
+			"pos": pos + Vector2(cos(a), sin(a)) * _fx_rng.randf_range(0.0, 26.0),
+			"vel": Vector2(cos(a), sin(a)) * spd,
+			"r": _fx_rng.randf_range(3.0, 11.0),
+			"life": _fx_rng.randf_range(0.5, 0.9),
+		})
+
+
+func _draw_blood_parts() -> void:
+	for p in _blood_parts:
+		var la: float = clampf(p.life / 0.6, 0.0, 1.0)
+		var col := Color(0.72, 0.04, 0.04, 0.9 * la)
+		var v: Vector2 = p.vel
+		var dirv: Vector2 = v.normalized() if v.length() > 1.0 else Vector2.RIGHT
+		# Damla: hız yönünde uzayan üç disk — üst üste binince "birleşen" kan hissi.
+		for k in range(3):
+			_burst_layer.draw_circle(p.pos - dirv * (p.r * 0.8 * float(k)), p.r * (1.0 - 0.28 * float(k)), col)
+		_burst_layer.draw_circle(p.pos, p.r * 0.5, Color(0.45, 0.01, 0.01, 0.9 * la))
+
+
+## Kurdun koltuğuna prosedürel kan sıçraması üret (blob demeti; _draw çizer).
+## Sinematikte parlak, sonra soluk kalıcı iz (köy sonuna dek).
+func _spawn_blood_stain(pos: Vector2) -> void:
+	var blobs: Array = []
+	for i in range(14):
+		var ang := _fx_rng.randf_range(0.0, TAU)
+		var dist := _fx_rng.randf_range(0.0, 64.0) * (1.0 + _fx_rng.randf() * 0.6)
+		blobs.append({
+			"off": Vector2(cos(ang), sin(ang)) * dist * Vector2(1.0, 0.72),
+			"r": _fx_rng.randf_range(3.0, 15.0) * (1.0 - dist / 130.0),
+		})
+	# Birkaç uzun damla sıçrama yönünde.
+	var splash_a := _fx_rng.randf_range(0.0, TAU)
+	for i in range(4):
+		var a2 := splash_a + _fx_rng.randf_range(-0.5, 0.5)
+		var d2 := _fx_rng.randf_range(60.0, 118.0)
+		blobs.append({
+			"off": Vector2(cos(a2), sin(a2)) * d2 * Vector2(1.0, 0.72),
+			"r": _fx_rng.randf_range(2.0, 5.0),
+		})
+	_blood_stains.append({"pos": pos, "blobs": blobs, "alpha": 1.0})
+
+
+## Sinematikte kurdun son repliği: kızıl, yukarı süzülüp sönen tek satır.
+func _show_kill_line(text: String, top_center: Vector2) -> void:
+	if _kill_label == null:
+		_kill_label = Label.new()
+		_kill_label.z_index = 300
+		_kill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_kill_label.add_theme_font_size_override("font_size", 30)
+		_kill_label.add_theme_color_override("font_color", Color(0.78, 0.10, 0.08))
+		_kill_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+		_kill_label.add_theme_constant_override("shadow_offset_y", 3)
+		add_child(_kill_label)
+	_kill_label.text = text
+	_kill_label.reset_size()
+	_kill_label.position = top_center - Vector2(_kill_label.get_minimum_size().x * 0.5, 30.0)
+	_kill_label.modulate.a = 0.0
+	_kill_label.visible = true
+	var t := create_tween()
+	t.tween_property(_kill_label, "modulate:a", 1.0, 0.28)
+	t.parallel().tween_property(_kill_label, "position:y", _kill_label.position.y - 26.0, 1.6)
+	t.tween_interval(0.5)
+	t.tween_property(_kill_label, "modulate:a", 0.0, 0.45)
+	t.tween_callback(func(): _kill_label.visible = false)
+
+
+## SORGU: ifade alındı — balon pop + HUD tazele + dedüksiyon yardımı güncelle.
 func _on_questioned(seat: int) -> void:
 	for card in _cards:
 		if card.seat == seat:
@@ -203,26 +620,38 @@ func _on_questioned(seat: int) -> void:
 			card.refresh()
 	if _hud != null:
 		_hud.update_all()
+	_recompute_deduction()
+	# Yön/mesafe ifadesi: çember üzerinde otomatik görselleştir.
+	if _clue_claim(seat) != null:
+		_clue_seat = seat
+		_clue_hold = 4.0
+		_clue_prog = 0.0
 
 
 func _on_question_denied(_seat: int, reason: String) -> void:
 	if _hud != null:
-		_hud.flash_banner("✋ " + reason.capitalize(), Palette.SAFFRON)
+		_hud.flash_banner(reason.capitalize(), Palette.SAFFRON)
 
 
 ## GECE SEKANSI: karanlık çöker, kurt avlanır (kurban kartları pençelenir), şafak söker.
 ## GameState.end_day() senkron işledi; burada yalnız görsel sekans oynar.
 func _on_night_passed(victims: Array) -> void:
 	_night_count += 1
+	_sync_grass_night_tint()
 	_cinematic = true
 	if _tooltip != null:
 		_tooltip.hide_tip()
-	# Karanlık çöker (gece göğü: indigo + hilal + yıldızlar).
+	# Karanlık YAVAŞÇA çöker (alacakaranlık hissi — ani gece basmasın).
+	# Gök kararır → letterbox iner → ay doğar → yıldızlar tek tek açılır
+	# (sahneleme _draw_night_layer'da alfa eşikleriyle). Sonra bir nefeslik
+	# tam-gece sessizliği: oyuncu göğü GÖRSÜN, sonra av başlasın.
 	var t := create_tween()
-	t.tween_method(_set_night_alpha, 0.0, 1.0, 0.5)
+	t.tween_method(_set_night_alpha, 0.0, 1.0, 3.4) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await t.finished
+	await get_tree().create_timer(0.8).timeout
 	if _hud != null:
-		_hud.flash_banner("🌙 Gece çöktü..." if victims.is_empty() else "🌙 Gece çöktü — sürüden ulumalar geliyor...", Color("9db8e8"))
+		_hud.flash_banner("Gece çöktü..." if victims.is_empty() else "Gece çöktü — sürüden ulumalar geliyor...", Color("9db8e8"))
 	await get_tree().create_timer(0.55).timeout
 	# Kurbanlar pençelenir.
 	for v in victims:
@@ -230,27 +659,34 @@ func _on_night_passed(victims: Array) -> void:
 			if card.seat == v:
 				card.refresh()
 				card.play_night_death()
+				var vc: Vector2 = card.position + card.size * 0.5
+				_spawn_blood_burst(vc)   # ölen kuzunun çevresine sıçrama (referans)
+				_spawn_blood_stain(vc)   # + kalıcı iz: ceset yerini sabahleyin de anlat
+				_wilt_grass_near(vc)
 				break
 		if _hud != null:
-			_hud.flash_banner("🐺 Kurt avlandı: #%d can verdi!" % v, Palette.BLOOD)
+			_hud.flash_banner("Kurt saldırdı — #%d can verdi!" % v, Palette.BLOOD)
 		await get_tree().create_timer(0.9).timeout
 	if victims.is_empty() and _hud != null:
 		_hud.flash_banner("Sürü bu gece sağ çıktı.", Palette.SAFFRON)
 		await get_tree().create_timer(0.6).timeout
-	# Şafak söker.
+	# Şafak YAVAŞÇA söker (yıldızlar önce kaybolur, gök en son ağarır).
 	var t2 := create_tween()
-	t2.tween_method(_set_night_alpha, 1.0, 0.0, 0.6)
+	t2.tween_method(_set_night_alpha, 1.0, 0.0, 2.6) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await t2.finished
 	_cinematic = false
 	_refresh_cards()
+	_recompute_deduction()  # ceset = yeni (yalan söylemeyen) kısıt
 	if _hud != null:
 		_hud.update_all()
 		if GameState.is_active():
-			_hud.flash_banner("☀ GÜN %d — sorgu hakların tazelendi" % GameState.village.day, Palette.SAFFRON)
+			_hud.flash_banner("GÜN %d — sorgu hakların tazelendi" % GameState.village.day, Palette.SAFFRON)
 	queue_redraw()
 
 
 func _relayout() -> void:
+	_layout_grass()
 	if _cards.is_empty():
 		return
 	var center := Vector2(size.x * 0.5, size.y * 0.5 + 2.0)
@@ -298,6 +734,22 @@ func _animate_seat(seat: int) -> void:
 ## Atmosfer animasyonu: her kare ilerlet + yeniden çiz. Kozmetik.
 func _process(delta: float) -> void:
 	_time += delta
+	_update_grass_fx(delta)
+	_probe_cards()
+	# Kan izleri taze kızıldan soluk kalıcı ize sönümlenir.
+	for stn in _blood_stains:
+		stn.alpha = maxf(0.34, stn.alpha - delta * 0.35)
+	# Anlık kan sıçraması parçacıkları: savrul, yavaşla, sön.
+	if not _blood_parts.is_empty():
+		var alive_p: Array = []
+		for p in _blood_parts:
+			p.life -= delta
+			if p.life > 0.0:
+				p.pos += p.vel * delta
+				p.vel *= 1.0 - 4.5 * delta
+				alive_p.append(p)
+		_blood_parts = alive_p
+		_burst_layer.queue_redraw()
 	if _sparks.is_empty() and size.x > 0.0:
 		_init_sparks()
 	for s in _sparks:
@@ -318,6 +770,22 @@ func _process(delta: float) -> void:
 			target = d.normalized()
 	# kritik-sönümlü his: kısa mesafede hızlı, uzakta yumuşak
 	_eye_look = _eye_look.lerp(target, clampf(delta * 6.0, 0.0, 1.0))
+
+	# Yön/mesafe ifadesi görünürlüğü: hover öncelikli, sonra otomatik süre.
+	_clue_hold = maxf(0.0, _clue_hold - delta)
+	var want_seat := -1
+	if _hovered_seat >= 0 and _clue_claim(_hovered_seat) != null:
+		want_seat = _hovered_seat
+	elif _clue_hold > 0.0 and _clue_claim(_clue_seat) != null:
+		want_seat = _clue_seat
+	if want_seat >= 0:
+		if want_seat != _clue_seat:
+			_clue_prog = 0.0
+		_clue_seat = want_seat
+		_clue_alpha = minf(1.0, _clue_alpha + delta * 4.0)
+		_clue_prog = minf(1.0, _clue_prog + delta * 2.2)
+	else:
+		_clue_alpha = maxf(0.0, _clue_alpha - delta * 3.0)
 
 	# Kazanma patlaması parçacıkları (sönümlü uçuş).
 	if not _burst.is_empty():
@@ -356,10 +824,9 @@ func _flicker() -> float:
 func _draw() -> void:
 	# Ritüel arka planı (pentagram + kandiller + kafatasları görselde).
 	# "cover": en-boyu koruyup ekranı doldur (kırpma).
-	var tex_size := Vector2(BG_TEXTURE.get_width(), BG_TEXTURE.get_height())
-	var scale := maxf(size.x / tex_size.x, size.y / tex_size.y)
-	var draw_size := tex_size * scale
-	var offset := (size - draw_size) * 0.5
+	var cover := _bg_cover()
+	var draw_size := Vector2(BG_TEXTURE.get_width(), BG_TEXTURE.get_height()) * float(cover[0])
+	var offset: Vector2 = cover[1]
 	# Doku olduğu gibi (renk modülasyonu YOK — kullanıcı kararı).
 	draw_texture_rect(BG_TEXTURE, Rect2(offset, draw_size), false)
 	# Hafif vinyet/karartma (kenarları koyulaştır, kartlar öne çıksın).
@@ -368,6 +835,24 @@ func _draw() -> void:
 	if _night_count > 0:
 		var tint := minf(0.34, _night_count * 0.09)
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.55, 0.02, 0.02, tint), true)
+
+	# Bg'deki 5 ritüel mumuna titreyen sıcak parıltı (bg-uzayına sabit, §10.7).
+	# Her mumun fazı farklı — senkron yanıp sönmesinler.
+	var cs := float(cover[0])
+	for ci in range(CANDLE_SPOTS.size()):
+		var cp: Vector2 = offset + CANDLE_SPOTS[ci] * cs
+		var fl := 0.72 + 0.28 * sin(_time * (6.5 + float(ci) * 0.9) + float(ci) * 2.1) \
+				* sin(_time * 3.7 + float(ci) * 1.3)
+		for gl in [[52.0, 0.06], [26.0, 0.11], [11.0, 0.18]]:
+			draw_circle(cp, gl[0] * cs * fl, Color(1.0, 0.52, 0.18, gl[1] * fl))
+
+	# Kan izleri: kurt ayıklanan koltuklarda kalıcı leke (sinematikte parlak doğar,
+	# _process soluk kalıcı değere sönümler).
+	for stn in _blood_stains:
+		var sa: float = stn.alpha
+		for b in stn.blobs:
+			draw_circle(stn.pos + b.off, b.r, Color(0.42, 0.02, 0.02, 0.62 * sa))
+			draw_circle(stn.pos + b.off, b.r * 0.62, Color(0.30, 0.01, 0.01, 0.5 * sa))
 
 	# Kesikli (dashed) boş kart slotları — kartlar buraya tek tek dağıtılır.
 	for slot in _slots:
@@ -383,8 +868,29 @@ func _draw() -> void:
 
 	# --- Merkez nazar / kem göz: seçili/hover karta doğru bakar (§10.1) ---
 	_draw_eye_arms(center, breathe)     # gözden çıkan dalgalanan koyu kollar
-	_draw_eye_backing(center, breathe)  # gözün gömülü olduğu koyu soket
+	_draw_eye_backing(center, breathe)  # gözün gömülü olduğu koyu gövde
 	_draw_nazar_eye(center, breathe)
+
+	# --- Yön/mesafe ifadesi görselleştirmesi (kavisli ok / adım izi) ---
+	if _clue_alpha > 0.01 and _clue_seat >= 0:
+		_draw_clue_fx(center)
+
+	# --- Çelişki bağları: hover edilen çelişkili karttan ortaklarına kızıl kesikli hat.
+	# Hat kart MERKEZLERİNE değil KENARLARINA bağlanır (kartın altından garip
+	# çıkmasın); iki uçta küçük düğüm noktası — "bağ" okunur.
+	if _hovered_seat >= 0 and _conflicts.has(_hovered_seat) and _hovered_seat < _cards.size():
+		var from: Vector2 = _cards[_hovered_seat].position + _cards[_hovered_seat].size * 0.5
+		for other in _conflicts[_hovered_seat]:
+			if other < _cards.size():
+				var to: Vector2 = _cards[other].position + _cards[other].size * 0.5
+				var dirv := (to - from).normalized()
+				var a := from + dirv * 96.0
+				var b := to - dirv * 96.0
+				if a.distance_to(b) > 24.0:
+					var lcol := Color(0.86, 0.11, 0.06, 0.7)
+					draw_dashed_line(a, b, lcol, 3.0, 12.0)
+					draw_circle(a, 4.0, lcol)
+					draw_circle(b, 4.0, lcol)
 
 	# Süzülen kıvılcım/toz parçacıkları — 4-köşe yıldız (twinkle).
 	for s in _sparks:
@@ -399,11 +905,111 @@ func _draw() -> void:
 		_draw_star(p.pos, p.size * 0.5 * la, Color(1.0, 0.97, 0.85, la), -p.rot * 0.7)
 
 
+## Kartın SON ifadesi yön/mesafe tipiyse döndür; değilse null.
+func _clue_claim(seat: int) -> TestimonyClaim:
+	if GameState.village == null or seat < 0 or seat >= GameState.village.n:
+		return null
+	var c := GameState.village.get_character(seat)
+	if c == null or not c.is_alive() or c.testimony == null:
+		return null
+	var t := c.testimony
+	if t.type == Enums.TestimonyType.NEAREST_EVIL_DIRECTION \
+			or t.type == Enums.TestimonyType.NEAREST_EVIL_DISTANCE:
+		return t
+	return null
+
+
+## İfade görselleştirmesi: konuşan karttan çember boyunca kavisli ok (yön) ya da
+## iki yana adım izi + hedef işareti (mesafe). Referans dili: mor rehber oklar.
+func _draw_clue_fx(center: Vector2) -> void:
+	var t := _clue_claim(_clue_seat)
+	if t == null or _cards.is_empty():
+		return
+	var n := _cards.size()
+	var step := TAU / float(n)
+	var a0 := -PI * 0.5 + step * float(_clue_seat)
+	# Ok yayı kart çemberinin biraz içinde döner (göz ile kartlar arası boşluk).
+	var r := minf(size.x, size.y) * (0.305 + maxf(0.0, n - 7) * 0.008) * 0.80
+	if t.type == Enums.TestimonyType.NEAREST_EVIL_DIRECTION:
+		match t.direction:
+			Enums.Direction.CLOCKWISE:
+				_draw_curved_arrow(center, r, a0 + step * 0.30, a0 + step * 1.85, CLUE_VIOLET)
+			Enums.Direction.COUNTER_CLOCKWISE:
+				_draw_curved_arrow(center, r, a0 - step * 0.30, a0 - step * 1.85, CLUE_VIOLET)
+			_:
+				# Eşit uzaklık: iki yöne kısa ok.
+				_draw_curved_arrow(center, r, a0 + step * 0.30, a0 + step * 1.30, CLUE_VIOLET)
+				_draw_curved_arrow(center, r, a0 - step * 0.30, a0 - step * 1.30, CLUE_VIOLET)
+	else:
+		_draw_distance_trail(center, r, a0, step, t.number, 1)
+		_draw_distance_trail(center, r, a0, step, t.number, -1)
+
+
+static func _ease_out_cubic(p: float) -> float:
+	return 1.0 - pow(1.0 - clampf(p, 0.0, 1.0), 3.0)
+
+
+## Kavisli ok: kuyruktan uca kalınlaşan/parlaklaşan yay + nabızlı ok başı.
+func _draw_curved_arrow(center: Vector2, radius: float, ang_from: float, ang_to: float, col: Color) -> void:
+	var alpha := _clue_alpha
+	var sweep := (ang_to - ang_from) * _ease_out_cubic(_clue_prog)
+	var segs := 26
+	var pts := PackedVector2Array()
+	for i in range(segs + 1):
+		var a := ang_from + sweep * float(i) / float(segs)
+		pts.append(center + Vector2(cos(a), sin(a)) * radius)
+	for i in range(segs):
+		var f := float(i) / float(segs)
+		var w := lerpf(2.5, 7.5, f)
+		var sa := alpha * lerpf(0.22, 1.0, f)
+		draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa * 0.30), w + 6.0)  # glow
+		draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa), w)
+	# Ok başı: uç teğeti yönünde üçgen, hafif nabız.
+	var tip := pts[segs]
+	var tangent := (pts[segs] - pts[segs - 1]).normalized()
+	if tangent == Vector2.ZERO:
+		return
+	var perp := Vector2(-tangent.y, tangent.x)
+	var hs := 17.0 * (1.0 + 0.08 * sin(_time * 6.0))
+	draw_circle(tip, hs * 0.95, Color(col.r, col.g, col.b, alpha * 0.16))
+	draw_colored_polygon(PackedVector2Array([
+		tip + tangent * hs,
+		tip - tangent * hs * 0.45 + perp * hs * 0.62,
+		tip - tangent * hs * 0.45 - perp * hs * 0.62,
+	]), Color(col.r, col.g, col.b, alpha))
+
+
+## Mesafe izi: konuşandan d adım öteye noktalı yay + hedefte nabızlı elmas.
+## İki yöne de çizilir — "en yakın kurt d adımda" iki taraftan biri demektir.
+func _draw_distance_trail(center: Vector2, radius: float, a0: float, step: float, d: int, dir_sign: int) -> void:
+	if d <= 0:
+		return
+	var alpha := _clue_alpha
+	var prog := _ease_out_cubic(_clue_prog)
+	var a1 := a0 + float(dir_sign) * step * 0.30
+	var a2 := a0 + float(dir_sign) * step * float(d) * prog
+	var dots := maxi(2, int(absf(a2 - a1) * radius / 16.0))
+	for i in range(dots + 1):
+		var f := float(i) / float(dots)
+		var a := lerpf(a1, a2, f)
+		var p := center + Vector2(cos(a), sin(a)) * radius
+		draw_circle(p, 2.6, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * lerpf(0.30, 0.85, f)))
+	# Hedef koltuk hizasında işaret (yay tamamlanınca belirir).
+	if prog > 0.92:
+		var ta := a0 + float(dir_sign) * step * float(d)
+		var tp := center + Vector2(cos(ta), sin(ta)) * radius
+		var s := 9.0 * (1.0 + 0.15 * sin(_time * 5.0))
+		draw_circle(tp, s * 1.8, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * 0.18))
+		draw_colored_polygon(PackedVector2Array([
+			tp + Vector2(0, -s), tp + Vector2(s, 0), tp + Vector2(0, s), tp + Vector2(-s, 0),
+		]), Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha))
+
+
 ## Merkez nazar / kem göz — SADE: kırmızı gradyan gövde + koyu bebek. Parlama/
 ## catchlight YOK. Arkasında düz tek siyah border (_draw_eye_backing).
 func _draw_nazar_eye(center: Vector2, breathe: float) -> void:
-	# Referans: büyük KIRMIZI göz + büyük KOYU bebek + yumuşak kızıl kenar.
-	# DÜZ renkler (bantlı gradyan / beyaz parıltı / iris dokusu YOK).
+	# Referans: büyük KIRMIZI göz + İRİ koyu bebek (kenara kayınca kızıl HİLAL
+	# kalır) + yumuşak kızıl kenar.
 	var tw := _time * 1.1
 	var rx := 74.0 * (0.98 + 0.03 * breathe)
 	var ry := 88.0 * (0.98 + 0.03 * breathe)
@@ -418,9 +1024,12 @@ func _draw_nazar_eye(center: Vector2, breathe: float) -> void:
 	draw_colored_polygon(_eye_outline(center, rx, ry, tw), Color(0.46, 0.03, 0.02, 1.0))
 	draw_colored_polygon(_eye_outline(center, rx * 0.9, ry * 0.9, tw), Color(0.86, 0.11, 0.06, 1.0))
 
-	# Büyük koyu bebek (dikey oval), bakışa göre kayar.
-	var pc := center + Vector2(_eye_look.x * rx * 0.36, _eye_look.y * ry * 0.4)
-	draw_colored_polygon(_eye_outline(pc, rx * 0.42, ry * 0.5, tw), Color(0.03, 0.0, 0.0, 1.0))
+	# İRİ koyu bebek — bakış yönüne kaydıkça kırmızı hilal ortaya çıkar (referans).
+	var pc := center + Vector2(_eye_look.x * rx * 0.34, _eye_look.y * ry * 0.30)
+	draw_colored_polygon(_eye_outline(pc, rx * 0.58, ry * 0.62, tw), Color(0.05, 0.004, 0.01, 1.0))
+	# Bebek çekirdeği: daha da koyu iç (derinlik hissi).
+	var cc := pc + Vector2(_eye_look.x * 6.0, _eye_look.y * 5.0)
+	draw_colored_polygon(_eye_outline(cc, rx * 0.34, ry * 0.38, tw), Color(0.0, 0.0, 0.0, 1.0))
 
 
 ## Gözün organik konturu: dikey yumurta (elips) + zamanla dalgalanan canlı kenar.
@@ -440,21 +1049,30 @@ func _eye_outline(c: Vector2, rx: float, ry: float, tw: float) -> PackedVector2A
 
 ## Gözden çıkan DALGALANAN koyu kollar (yaratık hissi). Her kol incelen, sinüsle
 ## kıvrılan koyu bir şerit; zamanla sallanır. Gözün arkasında çizilir.
+## Kollar ARA ARA kart çemberine kadar uzanır — uç bir karta değince kart
+## "yoklanır" (bkz. _probe_cards): göz sürüyü tek tek kontrol ediyor hissi.
 func _draw_eye_arms(center: Vector2, breathe: float) -> void:
-	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.28
-	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.28
+	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.48
+	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.36
 	var arms := 9
 	var col := Color(0.03, 0.006, 0.012, 1.0)
+	# Kart çemberi yarıçapı (_relayout ile aynı formül) — kolların max erimi.
+	var ring := minf(size.x, size.y) * (0.305 + maxf(0.0, _cards.size() - 7) * 0.008)
+	_arm_tips.clear()
 	for k in range(arms):
 		var base_a := TAU * float(k) / float(arms)
 		var ang := base_a + 0.20 * sin(_time * 1.2 + k * 0.8)
 		var root := center + Vector2(cos(ang), sin(ang)) * Vector2(rx * 0.72, ry * 0.72)
-		var length := (rx + ry) * 0.5 * (0.85 + 0.3 * sin(_time * 0.9 + k * 1.3))
-		_draw_wavy_arm(root, ang, length, 16.0 + 4.0 * sin(_time + k), col, k)
+		# Yavaş, kol başına faz kaymalı nefes: tepe noktasında uç kartlara değer,
+		# çukurda gözün dibine çekilir ("ara ara" dokunma motorun kendisinden).
+		var stretch := 0.34 + 0.40 * sin(_time * 0.55 + float(k) * 2.3)
+		var length := maxf(30.0, ring * (0.42 + stretch) - root.distance_to(center))
+		var tip := _draw_wavy_arm(root, ang, length, 16.0 + 4.0 * sin(_time + k), col, k)
+		_arm_tips.append(tip)
 
 
-## Kökten uca incelen, boyunca sinüsle kıvrılan koyu şerit.
-func _draw_wavy_arm(root: Vector2, angle: float, length: float, base_w: float, col: Color, idx: int) -> void:
+## Kökten uca incelen, boyunca sinüsle kıvrılan koyu şerit. Uç noktasını döndürür.
+func _draw_wavy_arm(root: Vector2, angle: float, length: float, base_w: float, col: Color, idx: int) -> Vector2:
 	var seg := 9
 	var dir := Vector2(cos(angle), sin(angle))
 	var perp := Vector2(-dir.y, dir.x)
@@ -473,13 +1091,36 @@ func _draw_wavy_arm(root: Vector2, angle: float, length: float, base_w: float, c
 	for i in range(right.size()):
 		pts.append(right[right.size() - 1 - i])
 	draw_colored_polygon(pts, col)
+	var tip_wob := sin(3.2 + _time * 2.2 + idx) * 14.0
+	return root + dir * length + perp * tip_wob
 
 
-## Kırmızı gözün oturduğu KOYU çevre (soket). Gözden biraz büyük düz koyu şekil.
+## Kırmızı gözün gömülü olduğu KOYU YARATIK GÖVDESİ: loblu, yavaş dalgalanan
+## organik kütle + kenarında için için yanan kızıl çatlaklar (referans: dev tek
+## gözlü gölge-yaratık).
 func _draw_eye_backing(center: Vector2, breathe: float) -> void:
-	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.28
-	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.28
-	draw_colored_polygon(_eye_outline(center, rx, ry, _time * 1.1), Color(0.04, 0.01, 0.015, 1.0))
+	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.48
+	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.36
+	# Dış yumuşak gölge (gövde zemine sızar).
+	draw_colored_polygon(_blob_outline(center, rx * 1.18, ry * 1.15, _time * 0.7, 2.0),
+		Color(0.02, 0.005, 0.01, 0.55))
+	# Ana gövde.
+	draw_colored_polygon(_blob_outline(center, rx, ry, _time * 0.7, 0.0),
+		Color(0.045, 0.012, 0.018, 1.0))
+
+
+## Loblu organik gövde konturu: _eye_outline'dan daha güçlü, çok frekanslı dalga.
+func _blob_outline(c: Vector2, rx: float, ry: float, tw: float, seed_off: float) -> PackedVector2Array:
+	var seg := 56
+	var pts := PackedVector2Array()
+	for i in range(seg):
+		var a := TAU * float(i) / float(seg)
+		var wob := 1.0 \
+			+ 0.09 * sin(a * 4.0 + tw + seed_off) \
+			+ 0.055 * sin(a * 7.0 - tw * 0.7 + seed_off * 2.0) \
+			+ 0.04 * sin(a * 2.0 + tw * 0.5)
+		pts.append(c + Vector2(cos(a) * rx * wob, sin(a) * ry * wob))
+	return pts
 
 
 ## Göz gradyan rengi: t=0 kenar (koyu kan) -> t=1 merkez (sıcak kor). eg parlaklık.
@@ -499,6 +1140,9 @@ func _set_night_alpha(v: float) -> void:
 	_night_alpha = v
 	if _night_layer != null:
 		_night_layer.queue_redraw()
+	# Gece çökerken HUD tamamen çekilir — sahnede yalnız gök + kartlar + şerit kalır.
+	if _hud != null:
+		_hud.set_night_dim(v)
 
 
 ## Gece göğü: koyu indigo kaplama + parlayan HİLAL + titreyen yıldızlar.
@@ -508,24 +1152,54 @@ func _draw_night_layer() -> void:
 		return
 	var a := _night_alpha
 	var sz := _night_layer.size
-	_night_layer.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.02, 0.03, 0.10, 0.60 * a), true)
+	# SAHNELEME: her öğe farklı alfa aralığında girer (gerçek alacakaranlık sırası).
+	# gök 0.00-0.60 · letterbox 0.10-0.55 · ay 0.30-0.80 · yıldızlar 0.45-1.00.
+	var sky := clampf(a / 0.60, 0.0, 1.0)
+	var lba := clampf((a - 0.10) / 0.45, 0.0, 1.0)
+	var moon_a := clampf((a - 0.30) / 0.50, 0.0, 1.0)
+	# Gece iyice karanlık bassın (kullanıcı isteği) — çift katman.
+	_night_layer.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.015, 0.02, 0.08, 0.78 * sky), true)
 	# üstte daha koyu bant (gökyüzü hissi)
-	_night_layer.draw_rect(Rect2(Vector2.ZERO, Vector2(sz.x, sz.y * 0.35)), Color(0.01, 0.02, 0.08, 0.35 * a), true)
+	_night_layer.draw_rect(Rect2(Vector2.ZERO, Vector2(sz.x, sz.y * 0.35)), Color(0.008, 0.015, 0.06, 0.5 * sky), true)
 
-	# Hilal: dolu ay + üstüne kaydırılmış gök-rengi daire (ısırık).
-	var mc := Vector2(sz.x * 0.86, sz.y * 0.16)
-	for g in range(4):
-		_night_layer.draw_circle(mc, 34.0 + g * 10.0, Color(0.85, 0.88, 1.0, 0.045 * a * (1.0 - g * 0.2)))
-	_night_layer.draw_circle(mc, 30.0, Color(0.92, 0.93, 0.98, 0.95 * a))
-	_night_layer.draw_circle(mc + Vector2(-12, -7), 26.0, Color(0.05, 0.06, 0.14, 0.97 * a))
+	# Sinematik letterbox bantları: ekran dışından SÜZÜLEREK iner/çıkar.
+	var lb := 64.0 * _ease_out_cubic(lba)
+	if lb > 0.5:
+		_night_layer.draw_rect(Rect2(Vector2.ZERO, Vector2(sz.x, lb)), Color(0, 0, 0, 0.92 * lba), true)
+		_night_layer.draw_rect(Rect2(Vector2(0, sz.y - lb), Vector2(sz.x, lb)), Color(0, 0, 0, 0.92 * lba), true)
+		_night_layer.draw_line(Vector2(0, lb), Vector2(sz.x, lb), Color(0.79, 0.45, 0.23, 0.28 * lba), 1.5)
+		_night_layer.draw_line(Vector2(0, sz.y - lb), Vector2(sz.x, sz.y - lb), Color(0.79, 0.45, 0.23, 0.28 * lba), 1.5)
 
-	# Yıldızlar: deterministik konum (hash), zamanla titrer.
-	for i in range(26):
+	# Hilal: ufuktan DOĞAR (alfayla yukarı süzülür), dolu ay + gök-rengi ısırık.
+	if moon_a > 0.01:
+		var rise := (1.0 - _ease_out_cubic(moon_a)) * 70.0
+		var mc := Vector2(sz.x * 0.86, sz.y * 0.16 + rise)
+		for g in range(4):
+			_night_layer.draw_circle(mc, 34.0 + g * 10.0, Color(0.85, 0.88, 1.0, 0.045 * moon_a * (1.0 - g * 0.2)))
+		_night_layer.draw_circle(mc, 30.0, Color(0.92, 0.93, 0.98, 0.95 * moon_a))
+		_night_layer.draw_circle(mc + Vector2(-12, -7), 26.0, Color(0.05, 0.06, 0.14, 0.97 * moon_a))
+
+	# Yıldızlar: TEK TEK, parlayıp yerine oturarak açılır ("pop"); zamanla titrer.
+	# Büyükler artı-parıltılı — gökyüzü gerçekten dolu ve okunur hissetsin.
+	for i in range(42):
 		var fx := fposmod(sin(float(i) * 12.9898) * 43758.5453, 1.0)
 		var fy := fposmod(sin(float(i) * 78.233) * 12578.1459, 1.0)
-		var sp := Vector2(fx * sz.x, fy * sz.y * 0.5)
-		var tw := 0.35 + 0.55 * (0.5 + 0.5 * sin(_time * (1.5 + fx * 2.0) + float(i)))
-		_night_layer.draw_circle(sp, 1.6 + fx * 1.4, Color(0.9, 0.92, 1.0, tw * a * 0.8))
+		var star_a := clampf((a - 0.40 - fx * 0.42) / 0.16, 0.0, 1.0)
+		if star_a <= 0.0:
+			continue
+		var sp := Vector2(fx * sz.x, fy * sz.y * 0.52)
+		var tw := 0.5 + 0.5 * (0.5 + 0.5 * sin(_time * (1.5 + fx * 2.0) + float(i)))
+		var pop := 1.0 + (1.0 - star_a) * 2.2  # doğarken büyük parlar, oturur
+		var r := (1.8 + fx * 1.8) * pop
+		var col := Color(0.92, 0.94, 1.0, tw * star_a)
+		_night_layer.draw_circle(sp, r, col)
+		# Parlak yıldızlarda ince artı-ışıma.
+		if fx > 0.62:
+			var arm := r * 2.6 * tw
+			_night_layer.draw_line(sp + Vector2(-arm, 0), sp + Vector2(arm, 0),
+				Color(col.r, col.g, col.b, col.a * 0.55), 1.2)
+			_night_layer.draw_line(sp + Vector2(0, -arm), sp + Vector2(0, arm),
+				Color(col.r, col.g, col.b, col.a * 0.55), 1.2)
 
 
 ## Kazanma yıldız patlaması: merkezden dışa uçan altın yıldızlar.
@@ -576,8 +1250,11 @@ func _dashed_line(a: Vector2, b: Vector2, dash: float, gap: float, col: Color) -
 		t += dash + gap
 
 
-## 4-köşe parıltı yıldızı.
+## 4-köşe parıltı yıldızı. Çok küçük yarıçapta poligon dejenere olup
+## "triangulation failed" hatası basıyordu — o boyutta zaten görünmez, atla.
 func _draw_star(c: Vector2, r: float, col: Color, rot: float) -> void:
+	if r < 0.75:
+		return
 	var pts := PackedVector2Array()
 	for i in range(8):
 		var a := rot + PI * float(i) / 4.0
@@ -596,12 +1273,12 @@ func _on_card_clicked(seat: int) -> void:
 		var pc := GameState.village.get_character(seat)
 		if not pc.is_alive():
 			if _hud != null:
-				_hud.flash_banner("Ölüler ağıla alınmaz — koruma seç ya da tekrar 🌙", Color("9db8e8"))
+				_hud.flash_banner("Ölüler ağıla alınmaz — koruma seç ya da tekrar G'ye bas", Color("9db8e8"))
 			return
 		_protect_mode = false
 		_refresh_cards()
 		if _hud != null:
-			_hud.flash_banner("🛡 #%d ağıla alındı — gece çöküyor..." % seat, Color("9db8e8"))
+			_hud.flash_banner("#%d ağıla alındı — gece çöküyor..." % seat, Color("9db8e8"))
 		GameState.end_day(seat)
 		return
 	# Aktif yetenek (Kılıççı/Avcı) hedefleme modu: sıradaki tık hedef (aynı karta tık = iptal).
@@ -613,6 +1290,8 @@ func _on_card_clicked(seat: int) -> void:
 				_hud.set_execute_mode(false)  # banner'ı sıfırla
 		elif GameState.village.get_character(sl).role == &"Hunter":
 			GameState.hunt(sl, seat)
+		elif GameState.village.get_character(sl).role == &"Trapper":
+			GameState.arm_trap(sl, seat)
 		else:
 			GameState.slay(sl, seat)
 		_refresh_cards()
@@ -623,11 +1302,16 @@ func _on_card_clicked(seat: int) -> void:
 		return
 	# Kılıççı/Avcı'ya tıklama → hedefleme moduna gir (yetenek; sorgu değil).
 	var c := GameState.village.get_character(seat)
-	if c.is_alive() and not c.ability_used and not c.is_evil() and (c.role == &"Slayer" or c.role == &"Hunter"):
+	if c.is_alive() and not c.ability_used and not c.is_evil() \
+			and (c.role == &"Slayer" or c.role == &"Hunter" or c.role == &"Trapper"):
 		_slayer_seat = seat
 		if _hud != null:
-			var vt := "kılıç saplayacağın" if c.role == &"Slayer" else "ok atacağın"
-			_hud.flash_banner("⚔ %s — %s kartı seç (iptal: tekrar tık)" % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON)
+			var vt := "kılıç saplayacağın"
+			if c.role == &"Hunter":
+				vt = "ok atacağın"
+			elif c.role == &"Trapper":
+				vt = "kapan kuracağın"
+			_hud.flash_banner("%s — %s kartı seç (iptal: tekrar tık)" % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON)
 		_refresh_cards()
 		return
 	# V2: tık = SORGU (1 hak harcar; karakter sıradaki ifadesini verir).
@@ -648,7 +1332,7 @@ func _on_end_day() -> void:
 			var extra := ""
 			if GameState.village.questions_left > 0:
 				extra = "  (%d sorgu hakkın yanacak!)" % GameState.village.questions_left
-			_hud.flash_banner("🛡 AĞIL — koruyacağın kartı seç · korumasız gece: tekrar 🌙/G%s" % extra, Color("9db8e8"))
+			_hud.flash_banner("AĞIL — koruyacağın kartı seç · korumasız gece: tekrar GECE/G%s" % extra, Color("9db8e8"))
 		_refresh_cards()  # mavi koruma halesi
 		return
 	_protect_mode = false
@@ -661,9 +1345,9 @@ func _on_slayer_used(_slayer_seat_arg: int, target: int, hit: bool) -> void:
 	if _hud == null:
 		return
 	if hit:
-		_hud.flash_banner("⚔ İsabet — kurt vuruldu ve öldü!", Palette.SAFFRON)
+		_hud.flash_banner("İsabet! Kurt vuruldu ve öldü.", Palette.SAFFRON)
 	else:
-		_hud.flash_banner("⚔ Iska — #%d bir kurt değildi." % target, Palette.BLOOD)
+		_hud.flash_banner("Iska — #%d bir kurt değildi." % target, Palette.BLOOD)
 
 
 func _on_card_right_clicked(seat: int) -> void:
@@ -706,17 +1390,27 @@ func _unhandled_input(event: InputEvent) -> void:
 				_new_village()
 
 
+## TAB burada (unhandled değil): UI odak gezintisi (buton sekmesi) TAB'ı yutuyordu.
+## _input odaktan ÖNCE çalışır; olayı işleyip yutarız → defter güvenilir açılır.
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_TAB:
+		if _log != null:
+			_log.toggle()
+		get_viewport().set_input_as_handled()
+
+
 func _on_village_won(_score: int) -> void:
 	_set_execute_mode(false)
 	_spawn_win_burst()  # altın yıldız patlaması (sinematikle birlikte)
 	# Son kurt ayıklanınca HEMEN sonuç ekranına atlama; kurt kartının açılışı +
 	# kesme efekti görünsün, sonra geç. (HUD "Sürü kurtarıldı" overlay'i de gecikir.)
 	if RunManager.has_active_run():
-		await get_tree().create_timer(2.5).timeout  # ayıklama sinematiği bitsin
+		await get_tree().create_timer(3.7).timeout  # ayıklama sinematiği (~3.4 sn) bitsin
 		RunManager.on_village_won(GameState.score, GameState.health)
 		if RunManager.has_active_run():
-			# Köy kazanıldı, sefer sürüyor → dükkâna uğra (M4).
-			get_tree().call_deferred("change_scene_to_file", "res://scenes/shop.tscn")
+			# Köy kazanıldı, sefer sürüyor → haritaya dön (dükkân/olay artık DÜĞÜM).
+			Fader.change_scene.call_deferred("res://scenes/run_map.tscn")
 		else:
 			# Boss alt edildi / sefer bitti → sonuç ekranı.
 			_go_to_result()
@@ -724,14 +1418,43 @@ func _on_village_won(_score: int) -> void:
 
 func _on_village_lost(_reason: String) -> void:
 	_set_execute_mode(false)
+	await _play_lose_cinematic()
 	if RunManager.has_active_run():
 		RunManager.on_village_lost()
 		_go_to_result()
 
 
+## SÜRÜ DÜŞTÜ sinematiği: kızıl karanlık çöker, hayattaki kurtlar sırayla postu
+## atıp gerçek yüzünü gösterir, son söz ekrana düşer. Sonra sonuç ekranı (sefer)
+## ya da HUD overlay'i (bağımsız mod — hud 3.4 sn gecikmeli gösterir).
+func _play_lose_cinematic() -> void:
+	_cinematic = true
+	if _tooltip != null:
+		_tooltip.hide_tip()
+	if _log != null:
+		_log.set_open(false)
+	_cine_dim.visible = true
+	_cine_dim.modulate.a = 0.0
+	var t := create_tween()
+	t.tween_property(_cine_dim, "modulate:a", 0.85, 0.6)
+	await t.finished
+	for card in _cards:
+		var ch := GameState.village.get_character(card.seat)
+		if ch != null and ch.is_evil() and not ch.executed:
+			ch.revealed = true
+			card.z_index = 300
+			card.hide_bubble()
+			card.animate_reveal()
+			AudioManager.sfx("cull_good", -10.0, 0.55)
+			await get_tree().create_timer(0.55).timeout
+	_show_kill_line("Sürü artık bizim, çoban...", Vector2(size.x * 0.5, size.y * 0.24))
+	await get_tree().create_timer(2.0).timeout
+	_cinematic = false
+
+
 func _go_to_result() -> void:
 	# Sinyal içinde sahne değiştirme; freed olurken güvenli olsun diye deferred.
-	get_tree().call_deferred("change_scene_to_file", "res://scenes/result.tscn")
+	Fader.change_scene.call_deferred("res://scenes/result.tscn")
 
 
 func _toggle_execute_mode() -> void:

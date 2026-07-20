@@ -8,7 +8,8 @@ config_version=5
 config/name="NAZAR"
 config/description="Anadolu folk-horror sosyal cikarim / roguelike dedüksiyon kart oyunu."
 config/features=PackedStringArray("4.3")
-run/main_scene="res://scenes/run_map.tscn"
+run/main_scene="res://scenes/boot.tscn"
+config/icon="res://icon.png"
 
 [autoload]
 
@@ -19,6 +20,8 @@ RunManager="*res://autoload/run_manager.gd"
 SaveManager="*res://autoload/save_manager.gd"
 AudioManager="*res://autoload/audio_manager.gd"
 GameMenu="*res://autoload/game_menu.gd"
+CursorSkin="*res://autoload/cursor_skin.gd"
+Fader="*res://autoload/fader.gd"
 
 [display]
 
@@ -35,3 +38,4 @@ theme/default_font_multichannel_signed_distance_field=true
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

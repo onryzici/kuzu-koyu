@@ -22,6 +22,7 @@ extends Resource
 @export var claims: Array = []                   ## Array[TestimonyClaim] — tüm ifadeler
 @export var given: int = 0                       ## şimdiye dek verdiği ifade sayısı
 @export var testimony: TestimonyClaim            ## SON verilen ifade (UI balonu; null=henüz yok)
+@export var claim_days: Array = []               ## verilen her ifadenin GÜNÜ (İfade Defteri)
 
 func is_evil() -> bool:
 	return alignment == Enums.Alignment.EVIL

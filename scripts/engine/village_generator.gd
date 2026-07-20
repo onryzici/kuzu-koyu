@@ -21,10 +21,23 @@ extends RefCounted
 const GOOD_ROLES: Array[StringName] = [
 	&"Judge", &"Confessor", &"Oracle", &"Dreamer", &"Knight", &"Sentry",
 	&"Scout", &"Enlightened", &"Architect", &"Lover", &"Gossip",
+	&"Healer", &"Weaver", &"Midwife", &"Milkmaid", &"Crier", &"Beekeeper",
+	&"Sheepdog", &"Shearer", &"Drummer", &"Welldigger",
 ]
 
 ## İfadesi hedef-rastlantılı roller: 2. ifade aynı tipten (farklı hedef) olabilir.
-const RANDOM_ROLES: Array[StringName] = [&"Judge", &"Confessor", &"Oracle", &"Dreamer", &"Gossip"]
+const RANDOM_ROLES: Array[StringName] = [
+	&"Judge", &"Confessor", &"Oracle", &"Dreamer", &"Gossip",
+	&"Healer", &"Weaver", &"Midwife", &"Welldigger", &"Beadcounter",
+]
+
+
+## ROL AÇILIM KADEMELERİ: rol, ancak seferin çilesi (role_tier) bu eşiğe
+## ulaşınca havuza girer. Listede olmayan rol = baştan açık. Codex kilitleri de
+## bu tablodan okur. Determinizm: aynı seed + aynı çile = aynı köy (arkadaş yarışı).
+const ROLE_TIERS := {
+	&"Beadcounter": 1, &"Skittish": 1, &"Tailor": 1, &"Mirrorwright": 1,
+}
 
 
 ## config: { n, evil_count, demon_count, anchor_count, seed, max_attempts,
@@ -44,6 +57,10 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 	var q_per_day: int = config.get("q_per_day", 3)
 	var max_days: int = config.get("max_days", 5)
 	var kills_per_night: int = config.get("kills_per_night", 1)
+	var night_rule: int = config.get("night_rule", Enums.NightRule.NEAREST)
+	var has_trapper: bool = config.get("trapper", false)     # Tuzakçı var mı
+	var jinxed_count: int = config.get("jinxed_count", 0)    # Uğursuz sayısı
+	var role_tier: int = config.get("role_tier", 99)         # rol açılım kademesi (çile)
 
 	for attempt in range(max_attempts):
 		# Uzun süre çözülemezse anchor sayısını kademeli artır (simetriyi kır, §5.7).
@@ -51,8 +68,9 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 		if attempt > max_attempts / 2:
 			anchor_count = base_anchors + 1
 
-		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, rng)
+		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, has_trapper, jinxed_count, role_tier, rng)
 		state.q_per_day = q_per_day
+		state.night_rule = night_rule  # bot gece simülasyonu da bu kuralla oynar
 		state.questions_left = q_per_day
 		state.max_days = max_days
 		state.kills_per_night = kills_per_night
@@ -118,7 +136,7 @@ static func _budget_solvable(state: VillageState) -> bool:
 	return false
 
 
-static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, rng: RandomNumberGenerator) -> VillageState:
+static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, has_trapper: bool, jinxed_count: int, role_tier: int, rng: RandomNumberGenerator) -> VillageState:
 	var state := VillageState.new()
 	state.n = n
 	state.evil_count = evil_count
@@ -147,6 +165,22 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 	else:
 		evil_seats = _sample(_seq(n), evil_count, rng)
 
+	# Köy-özel rol havuzu: koşullu roller (Terzi ≥2 kurt, Aynacı çift n) ancak
+	# anlamlıysa havuza girer. Bluff/köylü/sarhoş hepsi bu havuzdan çeker —
+	# kurt da ancak bu köyde var olabilecek bir rolü taklit edebilir (adalet).
+	var pool_all: Array = []
+	for r in GOOD_ROLES:
+		if ROLE_TIERS.get(r, 0) <= role_tier:
+			pool_all.append(r)
+	if ROLE_TIERS.get(&"Beadcounter", 0) <= role_tier:
+		pool_all.append(&"Beadcounter")
+	if ROLE_TIERS.get(&"Skittish", 0) <= role_tier:
+		pool_all.append(&"Skittish")
+	if evil_count >= 2 and ROLE_TIERS.get(&"Tailor", 0) <= role_tier:
+		pool_all.append(&"Tailor")
+	if n % 2 == 0 and ROLE_TIERS.get(&"Mirrorwright", 0) <= role_tier:
+		pool_all.append(&"Mirrorwright")
+
 	state.omen_type = effective_omen
 	state.omen_params = {}
 	# Üretim sırasında Omen bilinir kabul edilir (teklik kontrolü tutarlı olsun);
@@ -162,10 +196,10 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		else:
 			chars[s].category = Enums.Category.MINION
 			chars[s].role = &"Minion"
-		chars[s].bluff_role = GOOD_ROLES[rng.randi() % GOOD_ROLES.size()]
+		chars[s].bluff_role = pool_all[rng.randi() % pool_all.size()]
 
 	# İyi köylülere MÜMKÜN OLDUĞUNCA BENZERSIZ rol ver (tekrarlı tanıklık olmasın).
-	var role_pool := _sample(GOOD_ROLES, GOOD_ROLES.size(), rng)
+	var role_pool := _sample(pool_all, pool_all.size(), rng)
 	var ri := 0
 	for i in range(n):
 		if chars[i].alignment == Enums.Alignment.GOOD:
@@ -205,7 +239,7 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		var chosen_d := _sample(dp, min(drunk_count, dp.size()), rng)
 		for di in chosen_d:
 			chars[di].category = Enums.Category.OUTCAST
-			chars[di].role = GOOD_ROLES[rng.randi() % GOOD_ROLES.size()]  # sandığı köylü rolü
+			chars[di].role = pool_all[rng.randi() % pool_all.size()]  # sandığı köylü rolü
 		state.drunk_count = chosen_d.size()
 		state.outcast_count += chosen_d.size()
 
@@ -214,6 +248,24 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		_assign_active_role(chars, n, &"Slayer", rng)
 	if has_hunter:
 		_assign_active_role(chars, n, &"Hunter", rng)
+	if has_trapper:
+		_assign_active_role(chars, n, &"Trapper", rng)
+
+	# Uğursuz (Jinxed): İYİ ve DOĞRU söyler ama sorgulayanın sürüsünden 1 can alır.
+	# Açıkça görünür (kart "Uğursuz" der) — risk/ödül İLAN edilir (adalet §7.3).
+	if jinxed_count > 0:
+		var jpool: Array = []
+		for i in range(n):
+			if chars[i].alignment == Enums.Alignment.GOOD \
+					and chars[i].category == Enums.Category.VILLAGER \
+					and chars[i].role != &"Astrologer" and chars[i].role != &"Slayer" \
+					and chars[i].role != &"Hunter" and chars[i].role != &"Trapper":
+				jpool.append(i)
+		var chosen_j := _sample(jpool, min(jinxed_count, jpool.size()), rng)
+		for ji in chosen_j:
+			chars[ji].category = Enums.Category.OUTCAST
+			chars[ji].role = &"Jinxed"
+		state.outcast_count += chosen_j.size()
 
 	state.characters = chars
 
@@ -269,6 +321,16 @@ static func _build_claims(c: Character, world: Dictionary, n: int, rng: RandomNu
 			stt.speaker = i
 			stt.text = "Bana dokunmayın — ben kutsanmış bir masumum. Ayıklarsanız felaket olur!"
 			out.append(stt)
+		&"Jinxed":
+			# Uğursuz: nazar uyarısı + DOĞRU bir gözlem (İYİ ve dürüsttür; bedeli candır).
+			var jt := TestimonyClaim.new()
+			jt.type = Enums.TestimonyType.SELF_ANCHOR
+			jt.speaker = i
+			jt.text = "Bana nazar değmiş çoban... Beni konuşturursan sürüden can gider. Yine de sorarsan — doğruyu söylerim."
+			out.append(jt)
+			var jobs := _true_obs(i, world, n, rng)
+			jobs.text = TestimonyText.phrase(&"Judge", jobs, rng)
+			out.append(jobs)
 		&"Astrologer":
 			var at := TestimonyClaim.new()
 			at.type = Enums.TestimonyType.SELF_ANCHOR
@@ -278,12 +340,16 @@ static func _build_claims(c: Character, world: Dictionary, n: int, rng: RandomNu
 			var aobs := _true_obs(i, world, n, rng)
 			aobs.text = TestimonyText.phrase(&"Judge", aobs, rng)
 			out.append(aobs)
-		&"Slayer", &"Hunter":
+		&"Slayer", &"Hunter", &"Trapper":
 			var alt := TestimonyClaim.new()
 			alt.type = Enums.TestimonyType.SELF_ANCHOR
 			alt.speaker = i
-			alt.text = ("Kılıcım hazır — bir kez saplayabilirim. Alfa Kurt'u bulursam ölür." if c.role == &"Slayer"
-				else "Yayım gergin — bir kez ateş edebilirim. Kurt vurursam ölür, koyun vurursam yara alırım.")
+			if c.role == &"Slayer":
+				alt.text = "Kılıcım hazır — bir kez saplayabilirim. Alfa Kurt'u bulursam ölür."
+			elif c.role == &"Hunter":
+				alt.text = "Yayım gergin — bir kez ateş edebilirim. Kurt vurursam ölür, koyun vurursam yara alırım."
+			else:
+				alt.text = "Kapanım yağlı, dişleri keskin — bir gece için bir koltuğa kurarım. Kurt oraya saldırırsa postu elimde kalır."
 			out.append(alt)
 			var sobs := _true_obs(i, world, n, rng)
 			sobs.text = TestimonyText.phrase(&"Judge", sobs, rng)
@@ -359,7 +425,7 @@ static func _true_claim(role: StringName, speaker: int, world: Dictionary, n: in
 	var evil_seats: Array = world["evil_seats"]
 
 	match role:
-		&"Judge", &"Confessor":
+		&"Judge", &"Confessor", &"Healer":
 			t.type = Enums.TestimonyType.ALIGNMENT_OF
 			var tgt := _rand_other(speaker, n, rng)
 			t.targets = [tgt]
@@ -378,11 +444,36 @@ static func _true_claim(role: StringName, speaker: int, world: Dictionary, n: in
 			t.targets = trio
 			t.number = _count_evil(trio, al)
 
-		&"Knight", &"Sentry":
+		&"Midwife":
+			# DÖRT kartlık set — geniş tarama (Oracle=2, Dreamer=3 ailesinin dördüncüsü).
+			t.type = Enums.TestimonyType.COUNT_IN_SET
+			var quad := _sample(_others(speaker, n), min(4, n - 1), rng)
+			t.targets = quad
+			t.number = _count_evil(quad, al)
+
+		&"Milkmaid":
+			# İki yanındaki İKİŞER komşu (±1, ±2): geniş komşuluk sayımı (deterministik).
+			t.type = Enums.TestimonyType.COUNT_IN_SET
+			t.targets = _ring_set(speaker, [-2, -1, 1, 2], n)
+			t.number = _count_evil(t.targets, al)
+
+		&"Crier":
+			# Saat yönünde önündeki ÜÇ kart (deterministik yay).
+			t.type = Enums.TestimonyType.COUNT_IN_SET
+			t.targets = _ring_set(speaker, [1, 2, 3], n)
+			t.number = _count_evil(t.targets, al)
+
+		&"Beekeeper":
+			# İki adım ötesindeki iki kart (±2): atlama komşuluğu (deterministik).
+			t.type = Enums.TestimonyType.COUNT_IN_SET
+			t.targets = _ring_set(speaker, [-2, 2], n)
+			t.number = _count_evil(t.targets, al)
+
+		&"Knight", &"Sentry", &"Sheepdog":
 			t.type = Enums.TestimonyType.NEIGHBOR_HAS_EVIL
 			t.number = _count_evil(BoardTopology.neighbors(speaker, n), al)
 
-		&"Scout":
+		&"Scout", &"Drummer":
 			t.type = Enums.TestimonyType.NEAREST_EVIL_DISTANCE
 			t.number = BoardTopology.nearest_evil_distance(speaker, evil_seats, n)
 
@@ -390,7 +481,7 @@ static func _true_claim(role: StringName, speaker: int, world: Dictionary, n: in
 			t.type = Enums.TestimonyType.NEAREST_EVIL_DIRECTION
 			t.direction = BoardTopology.nearest_evil_direction(speaker, evil_seats, n)
 
-		&"Architect":
+		&"Architect", &"Shearer":
 			t.type = Enums.TestimonyType.EVIL_COUNT_IN_REGION
 			var half := int(n / 2.0)
 			var ra := BoardTopology.arc((speaker + 1) % n, half, n)
@@ -416,12 +507,45 @@ static func _true_claim(role: StringName, speaker: int, world: Dictionary, n: in
 			t.targets = [nb[0], nb[1]]
 			t.bool_val = al[nb[0]] == al[nb[1]]
 
-		&"Gossip":
+		&"Gossip", &"Weaver", &"Welldigger":
 			# İki rastgele kartın aynı safta olup olmadığı.
 			t.type = Enums.TestimonyType.PAIR_RELATION
 			var pr := _sample(_others(speaker, n), 2, rng)
 			t.targets = pr
 			t.bool_val = al[pr[0]] == al[pr[1]]
+
+		&"Beadcounter":
+			# Mod-2 bilgisi: 4 kartlık sette kurt sayısının paritesi. Tam sayı değil
+			# parite — daha zayıf ama daha geniş bir kısıt (yeni matematik).
+			t.type = Enums.TestimonyType.COUNT_PARITY_IN_SET
+			var bset := _sample(_others(speaker, n), min(4, n - 1), rng)
+			t.targets = bset
+			t.bool_val = _count_evil(bset, al) % 2 == 0
+
+		&"Skittish":
+			# Eşitsizlik bilgisi: "kurt bana K'dan uzak/yakın" — İzci'nin (tam mesafe)
+			# bulanık kardeşi; aralık kısıtı üretir.
+			t.type = Enums.TestimonyType.NEAREST_EVIL_MIN_DIST
+			var sd := BoardTopology.nearest_evil_distance(speaker, evil_seats, n)
+			if sd >= 2:
+				t.compare = Enums.Compare.GREATER
+				t.number = 1 if sd == 2 else 1 + (rng.randi() % (sd - 1))  # 1..sd-1 → d>k DOĞRU
+			else:
+				t.compare = Enums.Compare.LESS
+				t.number = 2  # d(=0/1) < 2 DOĞRU
+
+		&"Tailor":
+			# Kurtlar-ARASI yapı: en yakın iki kurdun çember mesafesi. Konuşanın
+			# konumundan bağımsız, saf yerleşim kısıtı (Omen'in minyatürü).
+			t.type = Enums.TestimonyType.WOLF_GAP
+			t.number = _min_wolf_gap(evil_seats, n)
+
+		&"Mirrorwright":
+			# Karşı koltuk bilgisi: sabit hedef (speaker + n/2). Yalnız çift n'de havuzda.
+			t.type = Enums.TestimonyType.OPPOSITE_ALIGNMENT
+			var opp := (speaker + n / 2) % n
+			t.targets = [opp]
+			t.alignment = al[opp]
 
 		_:
 			t.type = Enums.TestimonyType.ALIGNMENT_OF
@@ -460,6 +584,15 @@ static func _false_claim(bluff_role: StringName, speaker: int, world: Dictionary
 			t.compare = _other_compare(t.compare, rng)
 		Enums.TestimonyType.PAIR_RELATION:
 			t.bool_val = not t.bool_val
+		Enums.TestimonyType.COUNT_PARITY_IN_SET:
+			t.bool_val = not t.bool_val
+		Enums.TestimonyType.NEAREST_EVIL_MIN_DIST:
+			# Eşitsizliği ters çevir: d>k iken "d<k" (ve tersi) kesin yanlış.
+			t.compare = Enums.Compare.LESS if t.compare == Enums.Compare.GREATER else Enums.Compare.GREATER
+		Enums.TestimonyType.WOLF_GAP:
+			t.number = _wrong_distance(t.number, n)
+		Enums.TestimonyType.OPPOSITE_ALIGNMENT:
+			t.alignment = Enums.Alignment.GOOD if t.alignment == Enums.Alignment.EVIL else Enums.Alignment.EVIL
 		_:
 			pass
 
@@ -473,6 +606,15 @@ static func _false_claim(bluff_role: StringName, speaker: int, world: Dictionary
 				t.alignment = Enums.Alignment.EVIL  # good seat'i Evil demek -> yanlış
 				break
 	return t
+
+
+## En yakın iki kurdun çember mesafesi (Terzi/WOLF_GAP).
+static func _min_wolf_gap(evil_seats: Array, n: int) -> int:
+	var best := n
+	for i in range(evil_seats.size()):
+		for j in range(i + 1, evil_seats.size()):
+			best = mini(best, BoardTopology.distance(int(evil_seats[i]), int(evil_seats[j]), n))
+	return best
 
 
 static func _count_evil(seats: Array, al: Array) -> int:
@@ -529,6 +671,16 @@ static func _assign_active_role(chars: Array, n: int, role: StringName, rng: Ran
 			pool.append(i)
 	if not pool.is_empty():
 		chars[pool[rng.randi() % pool.size()]].role = role
+
+
+## Konuşana göre sabit offset kümesi -> benzersiz seat listesi (kendisi hariç).
+static func _ring_set(speaker: int, offsets: Array, n: int) -> Array:
+	var out: Array = []
+	for off in offsets:
+		var s: int = ((speaker + int(off)) % n + n) % n
+		if s != speaker and not (s in out):
+			out.append(s)
+	return out
 
 
 static func _seq(n: int) -> Array:

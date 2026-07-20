@@ -103,5 +103,38 @@ func evaluate(world: Dictionary) -> bool:
 				return world["role"][speaker] == role
 			return true
 
+		Enums.TestimonyType.COUNT_PARITY_IN_SET:
+			# bool_val = true → "ÇİFT sayıda kurt" iddiası (0 dahil).
+			var cp := 0
+			for s in targets:
+				if al[s] == Enums.Alignment.EVIL:
+					cp += 1
+			return (cp % 2 == 0) == bool_val
+
+		Enums.TestimonyType.NEAREST_EVIL_MIN_DIST:
+			# GREATER: en yakın kurt number'dan UZAK (d > number).
+			# LESS: number'dan YAKIN (d < number). Eşitlik kullanılmaz.
+			var dm := BoardTopology.nearest_evil_distance(speaker, _evil_seats(world), n)
+			if compare == Enums.Compare.GREATER:
+				return dm > number
+			return dm < number
+
+		Enums.TestimonyType.WOLF_GAP:
+			# En yakın iki kurdun çember mesafesi tam number. Tek kurtla anlamsız → yanlış.
+			var ev := _evil_seats(world)
+			if ev.size() < 2:
+				return false
+			var best := n
+			for i2 in range(ev.size()):
+				for j2 in range(i2 + 1, ev.size()):
+					best = mini(best, BoardTopology.distance(int(ev[i2]), int(ev[j2]), n))
+			return best == number
+
+		Enums.TestimonyType.OPPOSITE_ALIGNMENT:
+			# Tam karşı koltuk (speaker + n/2). Üretici yalnız çift n'de kullanır.
+			if n % 2 != 0:
+				return false
+			return al[(speaker + n / 2) % n] == alignment
+
 		_:  ## SELF_ANCHOR / flavor: kısıt üretmez
 			return true
