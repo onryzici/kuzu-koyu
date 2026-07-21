@@ -10,14 +10,15 @@ signal log_toggled                       ## İfade Defteri butonu
 signal night_hover_changed(hovering: bool)  ## GECE hover → av önizlemesi
 signal restart_requested
 
-var _quest_label: Label
-var _progress_label: Label
+var _quest_label: Label        ## görev banner'ının 1. satırı
+var _progress_label: Label     ## AYNI banner'ın 2. satırı: "Avlanan: X/K" (birleşik alan)
 var _day_label: Label          ## "Gün 2/5 · Sorgu ●●○"
 var _deaths_label: Label       ## "☠ Kurbanlar: #2, #5" — nirengi kanıtı
+var _deaths_strip: Dictionary = {}  ## kurban şeridi (index yerine referans)
 var _mod_label: Label          ## köy modifier ilanı (Suskun Sürü / Kanlı Ay / Kuraklık)
 var _mod_strip: Dictionary = {}  ## _menu_strips içindeki modifier şeridi (referans)
 var _meta_label: Label
-var _village_label: Label
+var _meta_strip: Dictionary = {}    ## çile/para şeridi (yalnız seferde görünür)
 var _score_label: Label
 var _day_btn: Button           ## Günü Bitir (gece) butonu
 var _log_btn: Button           ## İfade Defteri butonu (TAB)
@@ -34,6 +35,7 @@ var _day_icon: Control         ## gece butonuna çizilen hilal ikonu (emoji yok)
 var _exec_mode := false
 var _overlay: ColorRect
 var _overlay_label: Label
+var _overlay_evidence: Label   ## zafer overlay'inde kanıt zinciri özeti
 var _restart_btn: Button
 var _dmg_flash: ColorRect
 var _hp_display := 1.0        ## animasyonlu can oranı (çizim için)
@@ -225,6 +227,16 @@ func _build() -> void:
 	_overlay_label.offset_top = -60
 	_overlay.add_child(_overlay_label)
 
+	# Kanıt zinciri özeti (yalnız zaferde dolar): "hangi kanıt neyi eledi".
+	_overlay_evidence = Label.new()
+	_overlay_evidence.add_theme_font_size_override("font_size", 16)
+	_overlay_evidence.add_theme_color_override("font_color", Color("d8cbb0"))
+	_overlay_evidence.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_overlay_evidence.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_overlay_evidence.position.y = 118
+	_overlay_evidence.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_overlay.add_child(_overlay_evidence)
+
 	_restart_btn = Button.new()
 	_restart_btn.text = Loc.t("new_village_btn")
 	_restart_btn.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -240,26 +252,26 @@ const MENU_PAD := 24.0
 const BANNER_FILL := Color(0.0, 0.0, 0.0, 0.96)  # full siyah
 
 func _build_left_menu() -> void:
-	_quest_label = _menu_label(19, Color("f4e9cf"))
-	_progress_label = _menu_label(17, Palette.SAFFRON)
+	_quest_label = _menu_label(18, Color("f4e9cf"))
+	_progress_label = _menu_label(15, Palette.SAFFRON)
 	_day_label = _menu_label(17, Color("9db8e8"))  # gün/sorgu — gece mavisi
 	_deaths_label = _menu_label(15, Color("d88f8a"))  # kanıt: gece kurbanları
-	_village_label = _menu_label(15, Palette.IVORY.darkened(0.08))
 	_meta_label = _menu_label(15, Palette.COPPER.lightened(0.25))  # para/ascension
 	_score_label = _menu_label(16, Color("8fe0a0"))
 	# Modifier ilanı (adalet §7.3: köy kuralı BAŞTAN duyurulur) — amber, dikkat çekici.
 	_mod_label = _menu_label(15, Color("f0b53c"))
-	# Aralarında belirgin boşluk (dip dibe olmasın): gap ~20px.
+	# Görev + Avlanan TEK banner'da ("label2" = ikinci satır — kullanıcı isteği:
+	# iki ayrı şerit yerine aynı alan). "Köy: x/y" şeridi kaldırıldı (gereksizdi).
+	_deaths_strip = {"label": _deaths_label, "y": 0.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": false}
+	_meta_strip = {"label": _meta_label, "y": 0.0, "w": 330.0, "h": 48.0, "off": -560.0, "visible": true}
 	_menu_strips = [
-		{"label": _quest_label, "y": 14.0, "w": 430.0, "h": 56.0, "off": -560.0, "visible": true},
-		{"label": _progress_label, "y": 96.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": true},
-		{"label": _day_label, "y": 164.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": true},
-		{"label": _deaths_label, "y": 232.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": false},
-		{"label": _village_label, "y": 232.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": true},
-		{"label": _meta_label, "y": 300.0, "w": 330.0, "h": 48.0, "off": -560.0, "visible": true},
-		{"label": _score_label, "y": 368.0, "w": 290.0, "h": 48.0, "off": -560.0, "visible": true},
+		{"label": _quest_label, "label2": _progress_label, "y": 14.0, "w": 430.0, "h": 74.0, "off": -560.0, "visible": true},
+		{"label": _day_label, "y": 0.0, "w": 300.0, "h": 48.0, "off": -560.0, "visible": true},
+		_deaths_strip,
+		_meta_strip,
+		{"label": _score_label, "y": 0.0, "w": 290.0, "h": 48.0, "off": -560.0, "visible": true},
 	]
-	_mod_strip = {"label": _mod_label, "y": 436.0, "w": 340.0, "h": 48.0, "off": -560.0, "visible": false}
+	_mod_strip = {"label": _mod_label, "y": 0.0, "w": 340.0, "h": 48.0, "off": -560.0, "visible": false}
 	_menu_strips.append(_mod_strip)
 	_layout_menu()
 
@@ -278,19 +290,31 @@ const MENU_TAIL := 44.0   ## yazıdan sonra sağ pah/kuyruk için pay
 const MENU_GAP := 24.0    ## banner'lar arası dikey boşluk
 
 ## Her banner genişliği YAZIYA GÖRE; görünür banner'lar üstten alta OTOMATİK istiflenir
-## (gizlenen olursa boşluk kalmaz).
+## (gizlenen olursa boşluk kalmaz). "label2" varsa banner İKİ satırlıdır (görev +
+## avlanan birleşik alanı) — genişlik iki satırın uzun olanına göre.
 func _layout_menu() -> void:
 	var y := 14.0
 	for s in _menu_strips:
 		var l: Label = s["label"]
+		var l2: Label = s.get("label2", null)
 		l.visible = s["visible"]
+		if l2 != null:
+			l2.visible = s["visible"]
 		if not s["visible"]:
 			continue
 		var tw: float = l.get_minimum_size().x
+		if l2 != null:
+			tw = maxf(tw, l2.get_minimum_size().x)
 		s["w"] = MENU_PAD + tw + MENU_TAIL
 		s["y"] = y
-		l.position = Vector2(s["off"] + MENU_PAD, y)
-		l.size = Vector2(tw + 6.0, s["h"])
+		if l2 != null:
+			l.position = Vector2(s["off"] + MENU_PAD, y + 5.0)
+			l.size = Vector2(tw + 6.0, 32.0)
+			l2.position = Vector2(s["off"] + MENU_PAD, y + 38.0)
+			l2.size = Vector2(tw + 6.0, 30.0)
+		else:
+			l.position = Vector2(s["off"] + MENU_PAD, y)
+			l.size = Vector2(tw + 6.0, s["h"])
 		y += s["h"] + MENU_GAP
 
 
@@ -628,18 +652,17 @@ func update_all() -> void:
 	# Kanıt: gece kurbanları (Av Düzeni bilinir → her ölüm kurt konumu kısıtıdır).
 	var victims: Array = []
 	for ev in v.night_events:
-		victims.append("#%d" % int(ev["victim"]))
-	_menu_strips[3]["visible"] = not victims.is_empty()
+		if int(ev["victim"]) >= 0:  # tuzak/şifa geceleri kurbansız (-1) — listeye girmez
+			victims.append("#%d" % int(ev["victim"]))
+	_deaths_strip["visible"] = not victims.is_empty()
 	if not victims.is_empty():
 		_deaths_label.text = Loc.t("deaths_label") % ", ".join(victims)
 	if RunManager.has_active_run():
-		_village_label.text = Loc.t("village_label") % [RunManager.current_index + 1, RunManager.nodes.size()]
 		_meta_label.text = Loc.t("meta_label") % [RunManager.ascension + 1, RunManager.coins]
-		_menu_strips[5]["visible"] = true
+		_meta_strip["visible"] = true
 	else:
-		_village_label.text = Loc.t("flock_label") % v.n
 		# Bağımsız modda ascension/para satırı gereksiz — gizle (istif kendini toplar).
-		_menu_strips[5]["visible"] = false
+		_meta_strip["visible"] = false
 	_score_label.text = Loc.t("score_label") % GameState.score
 	# Sorgu satın alma yalnız seferde (para RunManager'da) ve köy aktifken.
 	if _buyq_btn != null:
@@ -766,6 +789,13 @@ func _draw() -> void:
 			var pp := Vector2(qc.x - pts.x * 0.5, _buyq_btn.position.y + _buyq_btn.size.y + 16.0)
 			draw_string_outline(font, pp, ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.85))
 			draw_string(font, pp, ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("ffd479"))
+
+	# TUŞ REHBERİ: alt-orta, silik — yeni oyuncu Y/H gibi araçları keşfedebilsin.
+	if font != null and GameState.village != null and GameState.is_active():
+		var kg := Loc.t("key_guide")
+		var ks := font.get_string_size(kg, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+		draw_string(font, Vector2(size.x * 0.5 - ks.x * 0.5, size.y - 10.0), kg,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.94, 0.82, 0.38))
 
 	var gc := Vector2(90.0 + _globe_off, size.y - 96.0) + _globe_shake
 	# Düşük can uyarısı: küre çevresinde nabız gibi atan kızıl halkalar.
@@ -925,6 +955,9 @@ func _on_won(score: int) -> void:
 	_overlay.visible = true
 	_overlay_label.text = Loc.t("overlay_won") % score
 	_overlay_label.add_theme_color_override("font_color", Palette.SAFFRON)
+	# Kanıt zinciri: çözümü hangi kanıtların taşıdığını özetle (öğretici + tatmin).
+	var ev := GameState.evidence_summary(4)
+	_overlay_evidence.text = (Loc.t("ev_header") + "\n" + "\n".join(ev)) if not ev.is_empty() else ""
 
 
 func _on_lost(reason: String) -> void:
@@ -938,6 +971,7 @@ func _on_lost(reason: String) -> void:
 	_overlay.visible = true
 	_overlay_label.text = Loc.t("overlay_lost") % reason
 	_overlay_label.add_theme_color_override("font_color", Palette.BLOOD)
+	_overlay_evidence.text = ""
 
 
 func hide_overlay() -> void:

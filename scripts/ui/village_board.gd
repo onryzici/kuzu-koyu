@@ -94,6 +94,7 @@ var _hypo_seat := -1           ## V3.1 hipotez: "farz et bu kurt" (H); -1 = kapa
 var _hypo_forced: Dictionary = {}  ## hipotez altında kesinleşen seat -> Alignment
 var _hypo_worlds := 0          ## hipotezi tutan dünya sayısı (banner)
 var _confront_seat := -1       ## V3.1 yüzleştirme: konuşacak kart seçildi (Y); -1 = kapalı
+var _last_worlds := -1         ## kanıt zinciri: son bilinen dünya sayısı (düşüş = kanıt)
 var _slayer_seat := -1         ## Kılıççı hedefleme modu (aktif yetenek)
 var _protect_mode := false     ## AĞIL: gece öncesi koruma seçim modu
 
@@ -212,7 +213,11 @@ func _connect_events() -> void:
 	EventBus.trap_sprung.connect(func(trapped, caught):
 		if _hud != null:
 			_hud.flash_banner(Loc.t("trap_sprung") % [trapped, caught], Palette.SAFFRON)
-		_recompute_deduction())
+		_recompute_deduction(-1, Loc.t("ev_trap")))
+	# Başarım banner'ı (altın) — açılış anında görünür bildirim.
+	EventBus.achievement_unlocked.connect(func(id):
+		if _hud != null:
+			_hud.flash_banner(Loc.t("ach_banner") % Loc.t(id + "_name"), Color(1.0, 0.84, 0.42)))
 	EventBus.mark_changed.connect(func(_s, _m): _refresh_cards())
 	# V3 Gece Trafiği: şifa-kurtuluşu ve Gözcü raporları şafak sekansında anlatılır.
 	EventBus.night_saved.connect(func(): _night_saved = true)
@@ -252,6 +257,7 @@ func _new_village() -> void:
 	_confront_seat = -1
 	_hypo_seat = -1
 	_hypo_forced.clear()
+	_last_worlds = -1
 	if _tooltip != null:
 		_tooltip.hide_tip()
 	_spawn_cards(state.n)
@@ -336,6 +342,25 @@ func _start_village_intro(conf: Dictionary) -> void:
 			mod_lines.append(Loc.t("mod_%s" % m))
 		lines.append(_intro_label(box, "⚠ " + "  ·  ".join(mod_lines), 15, Color("f0b53c")))
 
+	# Bu köydeki GECE TRAFİĞİ rolleri: tek cümlelik öğreti (katmanlı öğretim §12 —
+	# mekanik ilk görüldüğü yerde, kart dağıtılmadan tanıtılır).
+	var special_keys: Array = []
+	for c in v.characters:
+		var sk := ""
+		match c.shown_role():
+			&"Herbalist":
+				sk = "intro_herb"
+			&"Watcher":
+				sk = "intro_watcher"
+			&"Wanderer":
+				sk = "intro_wanderer"
+			&"Hound":
+				sk = "intro_hound"
+		if sk != "" and not special_keys.has(sk):
+			special_keys.append(sk)
+	for sk in special_keys:
+		lines.append(_intro_label(box, Loc.t(sk), 14, Color("9fc8e8")))
+
 	lines.append(_intro_label(box, Loc.t("intro_skip"), 12, Color(1, 1, 1, 0.30)))
 
 	# Satırlar sırayla belirip hafif yukarı süzülür.
@@ -366,6 +391,12 @@ func _intro_label(parent: Node, text: String, fs: int, col: Color) -> Label:
 
 
 ## Giriş kartını kapat: kart kalkarken deste dağıtılır + HUD içeri kayar.
+## Bağlam ipucu: yalnız İLK karşılaşmada gösterilir (kalıcı — SaveManager).
+func _maybe_hint(id: String, loc_key: String) -> void:
+	if _hud != null and SaveManager.first_hint(id):
+		_hud.flash_banner(Loc.t(loc_key), Color(0.62, 0.80, 0.98))
+
+
 func _end_village_intro() -> void:
 	if _intro_done:
 		return
@@ -375,6 +406,12 @@ func _end_village_intro() -> void:
 	_deal_cards()
 	_hud.play_intro()
 	_maybe_start_tutorial()
+	# İlk Otacı köyü: "son sorgun silah" öğretisi (bir kez, kalıcı).
+	if GameState.village != null:
+		for c in GameState.village.characters:
+			if c.shown_role() == &"Herbalist":
+				_maybe_hint("herb", "hint_herb")
+				break
 	if _intro_layer != null and is_instance_valid(_intro_layer):
 		_intro_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var t := create_tween()
@@ -505,13 +542,19 @@ func _update_grass_fx(delta: float) -> void:
 ## changed_seat verilirse yalnız onun çiftleri yeniden denenir (sorgu başına
 ## O(konuşan) çağrı; tam matris O(konuşan²) geç köylerde takılma yapıyordu).
 ## Global kısıt değiştiren olaylarda (gece/ayıklama/kapan/Omen öğrenme) tam matris.
-func _recompute_deduction(changed_seat: int = -1) -> void:
+func _recompute_deduction(changed_seat: int = -1, src: String = "") -> void:
 	_worlds = []
 	if GameState.village == null:
 		_conflicts.clear()
 		return
 	var v := GameState.village
 	_worlds = DeductionSolver.solve(v.visible_for_solver())
+	# KANIT ZİNCİRİ: bu kanıt dünya sayısını düşürdüyse günlüğe yaz (köy sonu özeti).
+	var wc := _worlds.size()
+	if src != "" and _last_worlds > 0 and wc > 0 and wc < _last_worlds:
+		GameState.evidence_log.append({"day": v.day, "src": src, "from": _last_worlds, "to": wc})
+	if wc > 0:
+		_last_worlds = wc
 	# Çelişki: konuşmuş (ve gerçek yüzü açılmamış) iki koltuk aynı anda dürüst-İYİ
 	# olamıyorsa ikisini de işaretle — "en az biri yalan söylüyor (ya da Sarhoş)".
 	var speakers: Array = []
@@ -575,6 +618,7 @@ func _update_hypothesis() -> void:
 	if filtered.is_empty():
 		if _hud != null:
 			_hud.flash_banner(Loc.t("hypo_impossible") % [_hypo_seat, _hypo_seat], Palette.SAFFRON)
+		SaveManager.unlock_achievement("ach_hypo_proof")  # olmayana ergi ustası
 		_hypo_seat = -1
 		return
 	var n: int = GameState.village.n
@@ -649,7 +693,8 @@ func _on_night_hover(hovering: bool) -> void:
 		var alive := v.alive_seats()
 		var seen := {}
 		for w in _worlds:
-			var vic := NightEngine.pick_victim(w, alive, v.n, -1, v.night_rule)
+			# Dönek Alfa: önizleme O GECENİN fiili kuralıyla hesaplanır (tek doğruluk kaynağı).
+			var vic := NightEngine.pick_victim(w, alive, v.n, -1, NightEngine.effective_rule(v))
 			if vic >= 0:
 				seen[vic] = true
 		_night_risk = seen.keys()
@@ -698,18 +743,27 @@ func _spawn_cards(n: int) -> void:
 		move_child(_fx_layer, get_child_count() - 1)  # oklar tooltip'in de üstünde
 
 
-## Kartlar ortak desteden (alt-orta, ekran dışı) TEK TEK dağıtılsın.
+## Kartlar ortak desteden (alt-orta, ekran dışı) TEK TEK, KAPALI dağıtılır;
+## hepsi oturunca kısa bir nefes ve çember boyunca ALTIN AÇILIŞ DALGASI dolaşır
+## (seat 0'dan saat yönünde, her kart flip + toz + altın halka).
 func _deal_cards() -> void:
 	var deck_pos := Vector2(size.x * 0.5 - CardView.W * 0.5, size.y + 80.0)
 	for i in range(_cards.size()):
-		_cards[i].deal_in(_cards[i].position, 0.15 + i * 0.13, deck_pos)
+		_cards[i].deal_in(_cards[i].position, 0.15 + i * 0.11, deck_pos)
+	var settle := 0.15 + float(_cards.size()) * 0.11 + 0.60
+	var t := create_tween()
+	t.tween_interval(settle)
+	t.tween_callback(func():
+		AudioManager.play_deal()
+		for i in range(_cards.size()):
+			_cards[i].flip_open(float(i) * 0.09))
 
 
 ## Kart ayıklandı: yüzünü çevir (gerçek kimlik). Evil ise sinematik zoom + fiziksel
 ## bölünme oynat.
 func _on_card_executed(seat: int, was_evil: bool) -> void:
 	_animate_seat(seat)
-	_recompute_deduction()
+	_recompute_deduction(-1, Loc.t("ev_execute") % seat)
 	if was_evil and seat < _cards.size():
 		var card := _cards[seat]
 		await get_tree().create_timer(0.35).timeout  # flip (gerçek kurt yüzü) görünsün
@@ -858,7 +912,13 @@ func _on_questioned(seat: int) -> void:
 	# Müneccim Omen'i öğretmiş olabilir (global kısıt) → tam matris; değilse artımlı.
 	var full := GameState.village != null \
 			and GameState.village.get_character(seat).role == &"Astrologer"
-	_recompute_deduction(-1 if full else seat)
+	_recompute_deduction(-1 if full else seat, Loc.t("ev_question") % seat)
+	# İpucu (bir kez): birkaç ifade toplandı — hipotez aracını öğret.
+	var total_given := 0
+	for c in GameState.village.characters:
+		total_given += c.given
+	if total_given == 3:
+		_maybe_hint("hypo", "hint_hypo")
 	# Yön/mesafe ifadesi: çember üzerinde otomatik görselleştir.
 	if _clue_claim(seat) != null:
 		_clue_seat = seat
@@ -921,11 +981,15 @@ func _on_night_passed(victims: Array) -> void:
 	await t2.finished
 	_cinematic = false
 	_refresh_cards()
-	_recompute_deduction()  # ceset = yeni (yalan söylemeyen) kısıt
+	_recompute_deduction(-1, Loc.t("ev_night"))  # ceset/rapor = yalan söylemeyen kısıt
 	if _hud != null:
 		_hud.update_all()
 		if GameState.is_active():
 			_hud.flash_banner(Loc.t("day_refreshed") % GameState.village.day, Palette.SAFFRON)
+			# Gün 2 şafağı: yüzleştirme aracını öğret (bir kez, kalıcı).
+			if GameState.village.day == 2:
+				await get_tree().create_timer(1.2).timeout
+				_maybe_hint("confront", "hint_confront")
 	# V3: Gözcü şafak raporları — kartlar tazelendi (balon yeni raporu gösterir);
 	# banner oyuncuyu rapora yönlendirir.
 	if not _dawn_reporters.is_empty() and _hud != null and GameState.is_active():
@@ -1550,6 +1614,9 @@ func _draw_star(c: Vector2, r: float, col: Color, rot: float) -> void:
 func _on_card_clicked(seat: int) -> void:
 	if _cinematic or not GameState.is_active():
 		return
+	# Açılış dalgası bitmeden (kart kapalıyken) sorgu yok — balon kapalı karta binmesin.
+	if seat < _cards.size() and _cards[seat].is_facedown():
+		return
 	# AĞIL: koruma seçim modundaysa bu tık koruma + gece.
 	if _protect_mode:
 		var pc := GameState.village.get_character(seat)
@@ -1684,6 +1751,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_R:
 				if not _cinematic:
 					_new_village()
+			KEY_F8:
+				# GERİ BİLDİRİM: ekran görüntüsü user://'a + seed/durum panoya —
+				# arkadaş testlerinde hata bildirmek tek tuş olsun.
+				var img := get_viewport().get_texture().get_image()
+				var ts := Time.get_datetime_string_from_system().replace(":", "-")
+				img.save_png("user://feedback_%s.png" % ts)
+				if GameState.village != null:
+					var v := GameState.village
+					DisplayServer.clipboard_set("KOYUN POSTU feedback · seed=%d n=%d day=%d/%d hp=%d evil=%d/%d" % [
+						v.seed, v.n, v.day, v.max_days, GameState.health,
+						GameState.executed_evil(), GameState.total_evil()])
+				if _hud != null:
+					_hud.flash_banner(Loc.t("feedback_saved"), Palette.SAFFRON)
 			KEY_H:
 				# H: hipotez modu — üstüne gelinen kartı "farz et kurt" işaretle (V3.1).
 				if not _cinematic:

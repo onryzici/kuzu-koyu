@@ -56,6 +56,7 @@ var _hovered := false
 var _curse := 0.0        ## gece pençe efekti (1->0 kızıl-is dalgası)
 var _claw := 2.0         ## pençe savuruşları (0..2; ölüm animasyonunda sırayla iner)
 var _dust := 0.0         ## slota oturma toz bulutu (1->0)
+var _flash := 0.0        ## açılış dalgası altın parlama halkası (1->0)
 var _t := 0.0            ## kart-arkası gözü animasyonu
 var _mark := 0           ## mevcut işaret (rozet _draw'da çizilir; Label değil)
 var _mark_pop := 0.0     ## işaret değişince rozet pop animasyonu (1->0)
@@ -271,7 +272,9 @@ func pop_bubble() -> void:
 	t.tween_property(_bubble, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-## Deste-dağıtma: kart desteden GÖZ ARKASIYLA uçar, slotuna oturunca yüzü açılır.
+## Deste-dağıtma: kart desteden GÖZ ARKASIYLA uçar ve slotuna KAPALI oturur.
+## Açılış ayrı: board, tüm kartlar oturunca çember boyunca flip_open dalgası
+## gönderir (kullanıcı isteği: "önce kapalı dursun, sonra güzel efektle açılsın").
 func deal_in(target: Vector2, delay: float, deck_pos: Vector2) -> void:
 	_facedown = true
 	position = deck_pos
@@ -286,16 +289,43 @@ func deal_in(target: Vector2, delay: float, deck_pos: Vector2) -> void:
 	t.tween_property(self, "rotation", 0.0, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	t.tween_property(self, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	t.set_parallel(false)
-	# Slota oturunca yüzünü çevir (flip) + toz bulutu.
-	t.tween_property(self, "scale", Vector2(0.02, 1.06), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Oturma ânı: küçük toz pufu (kart hâlâ kapalı — göz sürüyü bekletiyor).
+	t.tween_callback(func():
+		_dust = 0.6
+		var dt := create_tween()
+		dt.tween_method(func(v: float): _dust = v; queue_redraw(), 0.6, 0.0, 0.3)
+		queue_redraw()
+	)
+
+
+func is_facedown() -> bool:
+	return _facedown
+
+
+## AÇILIŞ DALGASI: kapalı kart flip'le yüzünü çevirir — toz + ALTIN parlama
+## halkası + geri esnemeli pop. Board bunu çember sırasıyla gecikmeli çağırır;
+## sonuç, halka boyunca dolaşan bir "açılış dalgası".
+func flip_open(delay: float) -> void:
+	if not _facedown:
+		return
+	var t := create_tween()
+	t.tween_interval(delay)
+	# Dalga boyunca perde yükselir (çember dolaşan arpej — açılışın müziği).
+	t.tween_callback(func(): AudioManager.sfx("mark", -20.0, clampf(1.25 + delay * 0.9, 1.25, 2.0)))
+	t.tween_property(self, "scale", Vector2(0.02, 1.10), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	t.tween_callback(func():
 		_facedown = false
 		_dust = 1.0
+		_flash = 1.0
 		var dt := create_tween()
 		dt.tween_method(func(v: float): _dust = v; queue_redraw(), 1.0, 0.0, 0.45)
+		var ft := create_tween()
+		ft.tween_method(func(v: float): _flash = v; queue_redraw(), 1.0, 0.0, 0.6) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		queue_redraw()
 	)
-	t.tween_property(self, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "scale", Vector2(1.07, 1.07), 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 ## AYIKLANAN KURT: kart yok olmaz — yerinde pençelenir, kararır ve yara izleri +
@@ -525,6 +555,19 @@ func _draw() -> void:
 			var dist := (W * 0.52) + (1.0 - _dust) * 26.0
 			var dp := dc + Vector2(cos(da) * dist, sin(da) * dist * 0.8 + 6.0)
 			draw_circle(dp, 2.6 * _dust + 0.6, Color(0.92, 0.78, 0.5, 0.55 * _dust))
+
+	# --- Açılış dalgası: kart yüzünü çevirirken ALTIN parlama halkası (söner) ---
+	if _flash > 0.01:
+		var fg := StyleBoxFlat.new()
+		fg.bg_color = Color(1.0, 0.84, 0.42, 0.10 * _flash)
+		fg.set_corner_radius_all(RADIUS + 4)
+		draw_style_box(fg, rect.grow(3.0 + 8.0 * (1.0 - _flash)))
+		var fr := StyleBoxFlat.new()
+		fr.bg_color = Color(0, 0, 0, 0)
+		fr.set_corner_radius_all(RADIUS + 2)
+		fr.border_color = Color(1.0, 0.84, 0.42, 0.9 * _flash)
+		fr.set_border_width_all(3)
+		draw_style_box(fr, rect.grow(2.0 + 6.0 * (1.0 - _flash)))
 
 	# --- Seat numarası kartın ÜSTÜNDE, konturlu pill ---
 	_draw_seat_tag()

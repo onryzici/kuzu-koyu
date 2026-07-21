@@ -33,9 +33,15 @@ func _build() -> void:
 				Loc.t("result_coins_awarded") % RunManager.last_coins_awarded,
 				Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins],
 			]
+			# KANIT ZİNCİRİ: çözümü taşıyan en güçlü kanıtlar (öğretici + tatmin).
+			var ev := GameState.evidence_summary(2)
+			if not ev.is_empty():
+				lines.append(Loc.t("ev_header"))
+				lines.append_array(ev)
 		Enums.RunOutcome.RUN_WON:
 			title.text = Loc.t("result_run_won")
 			title.add_theme_color_override("font_color", Palette.SAFFRON)
+			SaveManager.unlock_achievement("ach_run_won")
 			lines = [
 				Loc.t("result_last_village") % RunManager.last_village_score,
 				Loc.t("map_total_line") % [RunManager.total_score, RunManager.coins],
@@ -95,14 +101,16 @@ func _build() -> void:
 		lt.tween_interval(0.35 + i * 0.18)
 		lt.tween_property(pc, "modulate:a", 1.0, 0.35)
 
+	# Butonlar satır sayısına göre aşağı kayar (kanıt zinciri eklenince binmesin).
+	var base_y := maxf(560.0, 300.0 + float(lines.size()) * 66.0 + 22.0)
 	var btn := Button.new()
 	btn.text = Loc.t("result_continue")
 	btn.anchor_left = 0.5
 	btn.anchor_right = 0.5
 	btn.offset_left = -140
 	btn.offset_right = 140
-	btn.offset_top = 560
-	btn.offset_bottom = 616
+	btn.offset_top = base_y
+	btn.offset_bottom = base_y + 56.0
 	ScreenFx.style_button(btn, Palette.CRIMSON.darkened(0.15), 22)
 	btn.pressed.connect(_continue)
 	add_child(btn)
@@ -116,8 +124,8 @@ func _build() -> void:
 	copy_btn.anchor_right = 0.5
 	copy_btn.offset_left = -140
 	copy_btn.offset_right = 140
-	copy_btn.offset_top = 632
-	copy_btn.offset_bottom = 680
+	copy_btn.offset_top = base_y + 72.0
+	copy_btn.offset_bottom = base_y + 120.0
 	ScreenFx.style_button(copy_btn, Palette.COPPER.darkened(0.35), 18)
 	copy_btn.pressed.connect(func():
 		DisplayServer.clipboard_set(Loc.t("result_share") % [
@@ -135,8 +143,8 @@ func _build() -> void:
 		endless_btn.anchor_right = 0.5
 		endless_btn.offset_left = -180
 		endless_btn.offset_right = 180
-		endless_btn.offset_top = 696
-		endless_btn.offset_bottom = 748
+		endless_btn.offset_top = base_y + 136.0
+		endless_btn.offset_bottom = base_y + 188.0
 		ScreenFx.style_button(endless_btn, Color(0.24, 0.07, 0.10, 0.97), 18)
 		endless_btn.pressed.connect(func():
 			RunManager.continue_endless()

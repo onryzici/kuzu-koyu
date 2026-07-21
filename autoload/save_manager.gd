@@ -16,11 +16,58 @@ var settings := {
 	"fullscreen": true,
 	"tutorial_done": false,  # sefer başı rehber bir kez gösterilir
 	"lang": "tr",            # arayüz dili (tr/en); yeni köyde tam etkinleşir
+	"hints_seen": [],        # bağlam ipuçları (H/Y/Otacı) — bir kez gösterilir
+	"achievements": [],      # açılan başarım id'leri
+	"stat_confronts": 0,     # kalıcı istatistik: yapılan yüzleştirme
+	"stat_quiet_dawns": 0,   # kalıcı istatistik: tanık olunan sessiz şafak
 }
+
+## Başarım kataloğu (sıra = gösterim sırası). Adlar Loc'ta: "<id>_name".
+const ACH_IDS: Array[String] = [
+	"ach_first_wolf", "ach_flawless", "ach_quiet_dawn", "ach_hypo_proof",
+	"ach_confront", "ach_trap", "ach_run_won", "ach_case",
+]
+
+
+## Test koşumları diske yazmasın (headless test runner false yapar) — başarım/
+## istatistik tetikleri gerçek oyuncu kaydını kirletmesin.
+var persist_enabled := true
 
 
 func _ready() -> void:
 	load_settings()
+
+
+## Bağlam ipucu bir kez gösterilir (kalıcı). true = ilk kez, göster.
+func first_hint(id: String) -> bool:
+	var seen: Array = settings.get("hints_seen", [])
+	if id in seen:
+		return false
+	seen.append(id)
+	settings["hints_seen"] = seen
+	save_settings()
+	return true
+
+
+## Kalıcı sayaç artır (settings'te yaşar — sefer kaydından bağımsız).
+func bump_stat(key: String) -> void:
+	settings[key] = int(settings.get(key, 0)) + 1
+	save_settings()
+
+
+## Başarım aç (idempotent). Yeni açıldıysa sinyal yayar (banner UI'da).
+func unlock_achievement(id: String) -> void:
+	var arr: Array = settings.get("achievements", [])
+	if id in arr:
+		return
+	arr.append(id)
+	settings["achievements"] = arr
+	save_settings()
+	EventBus.achievement_unlocked.emit(id)
+
+
+func achievement_count() -> int:
+	return (settings.get("achievements", []) as Array).size()
 
 
 func load_settings() -> void:
@@ -39,6 +86,8 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
+	if not persist_enabled:
+		return
 	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f == null:
 		return
@@ -47,6 +96,8 @@ func save_settings() -> void:
 
 
 func save_game() -> void:
+	if not persist_enabled:
+		return
 	var data := RunManager.to_save_dict()
 	data["version"] = SCHEMA_VERSION
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)

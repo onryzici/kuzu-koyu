@@ -118,6 +118,24 @@ const T := {
 	"intro_kills": {"tr": " · gecede %d av", "en": " · %d kills a night"},
 	"intro_foggy": {"tr": " · SİSLİ GECE (kurt en uzağı avlar)", "en": " · FOGGY NIGHT (the wolf hunts the farthest)"},
 	"intro_skip": {"tr": "tık ya da tuş — geç", "en": "click or press a key — skip"},
+	# Köy girişinde gece trafiği rolü öğretileri (ilk bakışta tek cümle).
+	"intro_herb": {"tr": "🌿 OTACI köyde: günün SON sorgusu gece onun şifa hedefi olur", "en": "🌿 A HERBALIST lives here: your LAST question marks their night visit"},
+	"intro_watcher": {"tr": "👁 GÖZCÜ köyde: her şafak komşularının ziyaret sayısını bedava söyler", "en": "👁 A WATCHER lives here: each dawn they report their neighbors' visits, free"},
+	"intro_wanderer": {"tr": "🚶 SEYYAH köyde: her gece saat yönündeki en yakın canlıya misafir olur", "en": "🚶 A WAYFARER lives here: each night they guest at the nearest living neighbor clockwise"},
+	"intro_hound": {"tr": "🐕 TAZI köyde: her şafak katilin geliş yönünü koklar", "en": "🐕 A HOUND lives here: each dawn it sniffs out the killer's approach"},
+	# Başarım adları (SaveManager.ACH_IDS ile eşleşir).
+	"ach_first_wolf_name": {"tr": "İlk Post", "en": "First Pelt"},
+	"ach_flawless_name": {"tr": "Tek Yara Almadan", "en": "Not a Scratch"},
+	"ach_quiet_dawn_name": {"tr": "Sessiz Şafak", "en": "Quiet Dawn"},
+	"ach_hypo_proof_name": {"tr": "Olmayana Ergi", "en": "Proof by Contradiction"},
+	"ach_confront_name": {"tr": "Gözünün İçine Bak", "en": "Look Them in the Eye"},
+	"ach_trap_name": {"tr": "Kapan Kurdu", "en": "The Trap Snaps"},
+	"ach_run_won_name": {"tr": "Sürü Kurtuldu", "en": "The Flock Endures"},
+	"ach_case_name": {"tr": "Dosya Kapandı", "en": "Case Closed"},
+	"map_records_meta": {
+		"tr": "Başarım: %d/%d   ·   Yüzleştirme: %d   ·   Sessiz şafak: %d",
+		"en": "Achievements: %d/%d   ·   Confrontations: %d   ·   Quiet dawns: %d",
+	},
 
 	# ---- Köy modifier'ları (İLAN edilir — HUD sol menü) ----
 	"mod_silent": {"tr": "SUSKUN SÜRÜ: herkes yalnız 1 ifade verir", "en": "SILENT FLOCK: everyone gives only 1 statement"},

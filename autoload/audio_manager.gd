@@ -110,6 +110,16 @@ func _connect_signals() -> void:
 	# İşaretleme sesi kaldırıldı (gecikmeli + rahatsızdı); mark yalnız görsel pop.
 	EventBus.village_won.connect(func(_score): sfx("win"))
 	EventBus.village_lost.connect(func(_r): sfx("lose"))
+	# GERİLİM KATMANI: can azaldıkça + şafaklar tükendikçe fısıltılar yükselir
+	# (amb_whispers). Sessiz şafak: yumuşak rahatlama çanı. Şafak raporu: kısa işaret.
+	EventBus.player_damaged.connect(func(_a, _h): _update_tension())
+	EventBus.card_executed.connect(func(_s, _e): _update_tension())
+	EventBus.day_started.connect(func(_d): _update_tension())
+	EventBus.night_passed.connect(func(_v): _update_tension())
+	EventBus.village_won.connect(func(_s): _set_whisper(0.0))
+	EventBus.village_lost.connect(func(_r): _set_whisper(0.0))
+	EventBus.night_saved.connect(func(): sfx("reveal", -8.0, 1.35))
+	EventBus.dawn_reports_given.connect(func(_seats): sfx("question", -12.0, 1.3))
 
 
 func _stream(name: String) -> AudioStream:
@@ -172,6 +182,47 @@ func _stop_ambience() -> void:
 	_amb_tween = create_tween()
 	_amb_tween.tween_property(_ambience, "volume_db", -36.0, 1.6)
 	_amb_tween.tween_callback(func(): _ambience.stop())
+
+
+## GERİLİM FISILTILARI: köy sıkıştıkça (düşük can + tükenen şafaklar) yükselen
+## loop'lu fısıltı katmanı (amb_whispers). Müzik bus'ında yaşar; köy bitince susar.
+var _whisper: AudioStreamPlayer
+var _whisper_tween: Tween
+
+func _update_tension() -> void:
+	var t := 0.0
+	if GameState.village != null and GameState.is_active():
+		var v: VillageState = GameState.village
+		t = clampf(0.55 * (1.0 - float(GameState.health) / float(GameState.max_health())) \
+			+ 0.45 * float(v.day - 1) / float(maxi(1, v.max_days - 1)), 0.0, 1.0)
+	_set_whisper(t)
+
+
+func _set_whisper(t: float) -> void:
+	if _whisper == null:
+		_whisper = AudioStreamPlayer.new()
+		_whisper.bus = &"Music"
+		add_child(_whisper)
+		var ws := load("res://assets/audio/amb_whispers.mp3")
+		if ws != null and "loop" in ws:
+			ws.loop = true
+		_whisper.stream = ws
+	if _whisper.stream == null:
+		return
+	if _whisper_tween != null and _whisper_tween.is_valid():
+		_whisper_tween.kill()
+	if t < 0.08:
+		if _whisper.playing:
+			_whisper_tween = create_tween()
+			_whisper_tween.tween_property(_whisper, "volume_db", -44.0, 1.4)
+			_whisper_tween.tween_callback(func(): _whisper.stop())
+		return
+	if not _whisper.playing:
+		_whisper.volume_db = -44.0
+		_whisper.play()
+	_whisper_tween = create_tween()
+	_whisper_tween.tween_property(_whisper, "volume_db", lerpf(-38.0, -13.0, t), 1.8) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
 ## Müziği hedef desibele yumuşakça taşı (gün/gece dinamiği).

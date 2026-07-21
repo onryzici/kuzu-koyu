@@ -61,6 +61,42 @@ const T := {
 		"tr": "İMKÂNSIZ: hiçbir tutarlı dünyada #%d kurt değil — bu da kanıttır: #%d KOYUN.",
 		"en": "IMPOSSIBLE: no consistent world has #%d as a wolf — which is proof itself: #%d is a SHEEP.",
 	},
+	# --- Bağlam ipuçları (bir kez gösterilir) + tuş rehberi ---
+	"hint_hypo": {
+		"tr": "İPUCU: bir kartın üstünde H'ye bas — 'farz et bu kurt' de, kesinleşenler halkalarla görünsün.",
+		"en": "TIP: press H over a card — assume 'this is the wolf' and watch the certainties light up as rings.",
+	},
+	"hint_confront": {
+		"tr": "İPUCU: Y ile YÜZLEŞTİRME — bir kart seç, hedefi tıkla; 2 sorguya nokta atışı cevap alırsın.",
+		"en": "TIP: press Y to CONFRONT — pick a card, click a target; a pointed answer for 2 questions.",
+	},
+	"hint_herb": {
+		"tr": "İPUCU: bu köyde OTACI var — günün SON sorgusu onun gece hedefi olur. Son sorgunu silaha çevir.",
+		"en": "TIP: this village has a HERBALIST — your LAST question of the day becomes their night target. Aim it.",
+	},
+	"key_guide": {
+		"tr": "Tık: Sorgu  ·  E: Avla  ·  G: Gece  ·  Y: Yüzleştir  ·  H: Hipotez  ·  TAB: Defter  ·  1-5: İşaret  ·  F8: Geri bildirim",
+		"en": "Click: Question  ·  E: Cull  ·  G: Night  ·  Y: Confront  ·  H: Hypothesis  ·  TAB: Journal  ·  1-5: Mark  ·  F8: Feedback",
+	},
+	# --- Kanıt zinciri (köy sonu özeti) ---
+	"ev_header": {
+		"tr": "— KANIT ZİNCİRİ —",
+		"en": "— CHAIN OF EVIDENCE —",
+	},
+	"ev_line": {
+		"tr": "Gün %d · %s: %d → %d olasılık",
+		"en": "Day %d · %s: %d → %d possibilities",
+	},
+	"ev_question": {"tr": "#%d'nin ifadesi", "en": "#%d's statement"},
+	"ev_night": {"tr": "gece kanıtı (ceset/rapor)", "en": "night evidence (corpse/report)"},
+	"ev_trap": {"tr": "kapan", "en": "the trap"},
+	"ev_execute": {"tr": "#%d ayıklandı", "en": "#%d culled"},
+	# --- Başarım + geri bildirim ---
+	"ach_banner": {"tr": "🏆 BAŞARIM: %s", "en": "🏆 ACHIEVEMENT: %s"},
+	"feedback_saved": {
+		"tr": "Geri bildirim hazır: ekran görüntüsü kaydedildi, seed panoya kopyalandı.",
+		"en": "Feedback ready: screenshot saved, seed copied to clipboard.",
+	},
 	"day_refreshed": {
 		"tr": "GÜN %d — sorgu hakların tazelendi",
 		"en": "DAY %d — your questions are restored",

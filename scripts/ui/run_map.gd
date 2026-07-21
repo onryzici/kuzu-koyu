@@ -183,6 +183,7 @@ func _build() -> void:
 	ScreenFx.style_button(_action_btn, Palette.CRIMSON.darkened(0.15), 24)
 	_action_btn.pressed.connect(_on_action)
 	_action_btn.mouse_entered.connect(func(): AudioManager.sfx("mark", -14.0, 1.3))
+	_hover_fx(_action_btn)
 	add_child(_action_btn)
 
 	# Elit köyü atla (yalnız ELITE düğümünde; elit her zaman İSTEĞE BAĞLI).
@@ -221,6 +222,7 @@ func _build() -> void:
 	_btn_row.offset_right = 407
 	_btn_row.offset_top = 660
 	_btn_row.offset_bottom = 710
+	_btn_row.alignment = BoxContainer.ALIGNMENT_CENTER  # buton sayısı değişse de ortalı
 	add_child(_btn_row)
 
 	# Sadeleştirilmiş menü (kullanıcı kararı): Kurallar oyun içi "?" butonunda ve
@@ -252,6 +254,7 @@ func _build() -> void:
 	seed_btn.custom_minimum_size = Vector2(140, 34)
 	ScreenFx.style_button(seed_btn, Color(0.10, 0.06, 0.08, 0.96), 14)
 	seed_btn.pressed.connect(_start_seeded)
+	_hover_fx(seed_btn)
 	_seed_row.add_child(seed_btn)
 
 	# Rekorlar: alt-orta pahlı siyah panel.
@@ -311,12 +314,25 @@ func _draw_life() -> void:
 func _secondary_btn(parent: Node, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(190, 48)
-	ScreenFx.style_button(b, Color(0.10, 0.06, 0.08, 0.96), 18)
+	b.custom_minimum_size = Vector2(190, 46)
+	ScreenFx.style_button(b, Color(0.10, 0.06, 0.08, 0.96), 16)
 	b.pressed.connect(cb)
 	b.mouse_entered.connect(func(): AudioManager.sfx("mark", -14.0, 1.3))  # hover tıkı
+	_hover_fx(b)
 	parent.add_child(b)
 	return b
+
+
+## Menü butonu hover cilası: yumuşak büyüme + geri esneme (kart hover diliyle aynı).
+func _hover_fx(btn: Button) -> void:
+	btn.pivot_offset = btn.size * 0.5
+	btn.resized.connect(func(): btn.pivot_offset = btn.size * 0.5)
+	btn.mouse_entered.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2(1.05, 1.05), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+	btn.mouse_exited.connect(func():
+		var t := create_tween()
+		t.tween_property(btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT))
 
 
 func _play_intro() -> void:
@@ -363,9 +379,9 @@ func _refresh() -> void:
 		_btn_row.add_theme_constant_override("separation", 18)
 		_btn_row.anchor_left = 0.5
 		_btn_row.anchor_right = 0.5
-		# 3 buton × 190 + 2 aralık × 18 = 606 → yarı 303.
-		_btn_row.offset_left = -303
-		_btn_row.offset_right = 303
+		# 4 buton × 190 + 3 aralık × 18 = 814 → yarı 407 (ALIGNMENT_CENTER ortalar).
+		_btn_row.offset_left = -407
+		_btn_row.offset_right = 407
 		_title.offset_top = 60
 		_title.offset_bottom = 128
 		_subtitle.offset_top = 132
@@ -436,7 +452,7 @@ func _refresh() -> void:
 		_action_btn.offset_left = -170
 		_action_btn.offset_right = 170
 		_btn_row.vertical = true
-		_btn_row.add_theme_constant_override("separation", 14)  # dikey sütun sıkı dursun
+		_btn_row.add_theme_constant_override("separation", 12)  # dikey sütun dengeli
 		_btn_row.anchor_left = 0.25
 		_btn_row.anchor_right = 0.25
 		_btn_row.offset_left = -170
@@ -445,21 +461,23 @@ func _refresh() -> void:
 		_seed_row.anchor_right = 0.25
 		_records_panel.anchor_left = 0.25
 		_records_panel.anchor_right = 0.25
-		# Sütun üstten başlar, altta nefes payı kalır (900'de alt boşluk ~54px).
-		_title.offset_top = 140
-		_title.offset_bottom = 255
-		_subtitle.offset_top = 260
-		_subtitle.offset_bottom = 294
-		_info.offset_top = 300
-		_info.offset_bottom = 356
-		_action_btn.offset_top = 370
-		_action_btn.offset_bottom = 426
-		_btn_row.offset_top = 442          # 3 buton × 48 + 2 aralık × 14 = 172
-		_btn_row.offset_bottom = 614
-		_seed_row.offset_top = 630
-		_seed_row.offset_bottom = 664
-		_records_panel.offset_top = 676
-		_records_panel.offset_bottom = 726
+		# Sütun üstten başlar; 4 ikincil buton HESAPLANMIŞ yer kaplar — tohum
+		# kutusu artık Ayarlar'ın üstüne binmez (ekran görüntüsü bug'ı) ve her
+		# blok arasında nefes payı var (kullanıcı: "menüler sıkışık").
+		_title.offset_top = 118
+		_title.offset_bottom = 233
+		_subtitle.offset_top = 240
+		_subtitle.offset_bottom = 274
+		_info.offset_top = 282
+		_info.offset_bottom = 336
+		_action_btn.offset_top = 350
+		_action_btn.offset_bottom = 408
+		_btn_row.offset_top = 434          # 4 buton × 46 + 3 aralık × 12 = 220
+		_btn_row.offset_bottom = 654
+		_seed_row.offset_top = 682
+		_seed_row.offset_bottom = 716
+		_records_panel.offset_top = 742
+		_records_panel.offset_bottom = 792
 		_action_btn.text = Loc.t("btn_new_run")
 		match RunManager.last_outcome:
 			Enums.RunOutcome.RUN_WON:
@@ -482,6 +500,11 @@ func _refresh() -> void:
 				RunManager.stat_best_score, max(1, RunManager.stat_best_ascension)]
 			if RunManager.stat_daily_date == RunManager.today_int():
 				rec.text += Loc.t("map_records_today") % RunManager.stat_daily_best
+			# Kalıcı meta: başarım sayısı + dedektif istatistikleri.
+			rec.text += "\n" + Loc.t("map_records_meta") % [
+				SaveManager.achievement_count(), SaveManager.ACH_IDS.size(),
+				int(SaveManager.settings.get("stat_confronts", 0)),
+				int(SaveManager.settings.get("stat_quiet_dawns", 0))]
 			_records_panel.visible = true
 		else:
 			_records_panel.visible = false

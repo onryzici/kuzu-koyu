@@ -13,6 +13,7 @@ var _section := ""
 
 
 func _ready() -> void:
+	SaveManager.persist_enabled = false  # testler gerçek kayıt/ayar dosyasına yazmasın
 	print("=== NAZAR motor testleri (V2 Sorgu & Gece) ===")
 	_test_topology()
 	_test_testimony()
@@ -1455,6 +1456,9 @@ func _test_run_manager() -> void:
 func _test_save_manager() -> void:
 	_section_start("SaveManager")
 	var rm = RunManager
+	# Bu test kayıt yazma/yüklemeyi SINAR — persist'i yalnız bu blokta aç
+	# (diğer testlerin başarım/istatistik tetikleri diske sızmasın).
+	SaveManager.persist_enabled = true
 	SaveManager.delete_save()
 	check(not SaveManager.has_save(), "temiz başlangıç: kayıt yok")
 
@@ -1493,6 +1497,7 @@ func _test_save_manager() -> void:
 	SaveManager.delete_save()
 	rm.active = false
 	rm.save_loaded = false
+	SaveManager.persist_enabled = false  # sonraki testler yine diske yazmasın
 
 
 func _expected_claim_type(role: StringName) -> int:

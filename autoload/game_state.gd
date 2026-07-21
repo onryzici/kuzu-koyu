@@ -12,6 +12,28 @@ var health: int = MAX_HEALTH
 var score: int = 0
 var phase: int = Enums.GamePhase.SETUP
 var case_config: Dictionary = {}  ## V3.1 VAKA modu: seçili senaryonun config'i (boş = normal)
+## KANIT ZİNCİRİ: her kanıt olayında dünya sayısı düşüşü kaydedilir (board yazar);
+## köy sonu özeti "hangi kanıt neyi eledi"yi anlatır. [{day, src, from, to}]
+var evidence_log: Array = []
+
+
+## Köy sonu özeti: en çok dünya eleyen kanıtlar, kronolojik sırada (en fazla maxn).
+func evidence_summary(maxn: int = 4) -> Array:
+	var idx := 0
+	var entries: Array = []
+	for e in evidence_log:
+		if int(e["from"]) > int(e["to"]):
+			entries.append({"i": idx, "e": e})
+		idx += 1
+	entries.sort_custom(func(a, b):
+		return int(a["e"]["from"]) - int(a["e"]["to"]) > int(b["e"]["from"]) - int(b["e"]["to"]))
+	var top := entries.slice(0, maxn)
+	top.sort_custom(func(a, b): return int(a["i"]) < int(b["i"]))
+	var out: Array = []
+	for t in top:
+		var e: Dictionary = t["e"]
+		out.append(Loc.t("ev_line") % [int(e["day"]), String(e["src"]), int(e["from"]), int(e["to"])])
+	return out
 var _shield_used := false     ## Kalkan muskası: köy başına 1 hasarsız yanlış
 var _night_grace := false     ## Pusula muskası: ilk gece av olmaz
 var _q_bought := 0            ## bu köyde parayla alınan sorgu sayısı (fiyat tırmanır)
@@ -62,6 +84,7 @@ func start_village(state: VillageState) -> void:
 	village.day = 1
 	village.questions_left = village.q_per_day
 	village.last_questioned = -1
+	evidence_log = []
 	# Muska etkileri (dükkândan, §4). Yalnız aktif seferde.
 	if RunManager.has_active_run():
 		# Kâhin Boncuğu: Gizli Kural baştan bilinir (Müneccim beklemeden).
@@ -197,6 +220,8 @@ func confront(asker: int, target: int) -> bool:
 	a.claim_days.append(village.day)
 	a.testimony = t
 	village.last_questioned = asker  # yüzleştirme de sorgudur — Otacı hedefi kayar
+	SaveManager.bump_stat("stat_confronts")
+	SaveManager.unlock_achievement("ach_confront")
 	EventBus.character_questioned.emit(asker)
 	# Uğursuz bedeli yüzleştirmede de işler (onu konuşturuyorsun).
 	if a.role == &"Jinxed":
@@ -229,9 +254,12 @@ func end_day(protected: int = -1) -> void:
 				# TUZAK tetiklendi: ölüm yok; yakalanan kurt son gece olayında.
 				var ev: Dictionary = village.night_events.back()
 				EventBus.trap_sprung.emit(int(ev["trapped"]), int(ev.get("caught", -1)))
+				SaveManager.unlock_achievement("ach_trap")
 				continue
 			if v == -3:
 				# ŞİFA: Otacı kurbanın evindeydi — ölüm yok (sessiz şafak, §0.7).
+				SaveManager.bump_stat("stat_quiet_dawns")
+				SaveManager.unlock_achievement("ach_quiet_dawn")
 				EventBus.night_saved.emit()
 				continue
 			victims.append(v)
@@ -280,6 +308,7 @@ func execute(seat: int) -> void:
 
 	if was_evil:
 		score += 100
+		SaveManager.unlock_achievement("ach_first_wolf")
 		# Cesaret Tılsımı: kurt avı o gün +1 sorgu hakkı kazandırır.
 		if RunManager.has_active_run() and RunManager.has_passive(&"cesaret"):
 			village.questions_left += 1
@@ -387,6 +416,10 @@ func _win_with_bonus() -> void:
 	score += health * 10
 	score += (village.max_days - village.day) * 25       # erken bitirme
 	score += village.alive_good_count() * 5              # hayatta kalan sürü
+	if health >= max_health():
+		SaveManager.unlock_achievement("ach_flawless")   # tek yara almadan
+	if not case_config.is_empty():
+		SaveManager.unlock_achievement("ach_case")       # bir vaka dosyası kapandı
 	_end(true, "")
 
 
