@@ -45,6 +45,36 @@ const GLOBE_R := 54.0
 const EYE_RED := Color(0.86, 0.11, 0.06)   ## merkez gözle aynı kırmızı
 var _t := 0.0                              ## dalgalanan border animasyonu için
 
+## Yörünge düzeni: uydu butonlar (gece/defter/?/sorgu) Avla'nın çevresinde yay
+## üzerinde dizilir — köşe yığılması yerine çembersel UI (kullanıcı isteği).
+const ORBIT_CENTER := Vector2(1524.0, 810.0)  ## Avla butonunun merkezi (1600x900)
+const ORBIT_R := 140.0                        ## uydu merkezlerinin yörünge yarıçapı
+const ORBIT_START := -82.0                    ## derece; tepenin hafif sağı, sola açılır
+const ORBIT_GAP := 12.0                       ## komşu uydular arası kenar boşluğu
+var _orbit_span := Vector2.ZERO               ## çizilen yörünge yayının açı aralığı (rad)
+
+
+## Avla'yı sabitler, görünür uyduları yaya dizer. Açı adımı buton yarıçaplarından
+## hesaplanır — buton eklenince/gizlenince (sorgu satın alma) dizilim kendini toplar.
+func _layout_orbit() -> void:
+	if _execute_btn == null:
+		return
+	var off := Vector2(_legend_off, 0)
+	_execute_btn.position = ORBIT_CENTER - _execute_btn.size * 0.5 + off
+	var sats: Array = [_day_btn, _log_btn, _info_btn]
+	if _buyq_btn != null and _buyq_btn.visible:
+		sats.append(_buyq_btn)
+	var ang := deg_to_rad(ORBIT_START)
+	var prev_r := 0.0
+	for b: Button in sats:
+		var r: float = b.size.x * 0.5
+		if prev_r > 0.0:
+			ang -= 2.0 * asin(clampf((prev_r + r + ORBIT_GAP) / (2.0 * ORBIT_R), 0.0, 1.0))
+		prev_r = r
+		b.position = ORBIT_CENTER + Vector2(cos(ang), sin(ang)) * ORBIT_R - b.size * 0.5 + off
+	_orbit_span = Vector2(ang, deg_to_rad(ORBIT_START))
+	queue_redraw()
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -101,11 +131,11 @@ func _build() -> void:
 	# Duyuru şeridi (RibbonBanner) BOARD'a aittir — gece HUD çekilirken görünür
 	# kalsın diye; attach_banner ile bağlanır.
 
-	# Arındır butonu — yuvarlak ritüel-hançer butonu (sağ-alt köşe, mutlak konum).
+	# Arındır butonu — yuvarlak ritüel-hançer butonu (sağ-alt köşe, yörünge merkezi).
 	# Metin yerine ÇİZİLMİŞ ikon (hançer / iptal çarpısı) + altında ad — emoji yok.
+	# Konumlar _layout_orbit'te (Avla merkez, kalanlar çevresinde yay).
 	_execute_btn = Button.new()
 	_execute_btn.text = ""
-	_execute_btn.position = Vector2(1466, 752)
 	_execute_btn.size = Vector2(116, 116)
 	_execute_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_round_button(_execute_btn)
@@ -114,11 +144,10 @@ func _build() -> void:
 	_exec_icon = _add_btn_icon(_execute_btn, _draw_exec_icon)
 	_setup_hover(_execute_btn)
 
-	# Günü Bitir (gece) butonu — Ayıkla'nın üstünde, gece indigo yuvarlak.
+	# Günü Bitir (gece) butonu — yörüngenin tepesinde, gece indigo yuvarlak.
 	# Emniyet: sorgu hakkı dururken ilk basış UYARIR, 2.5 sn içinde ikinci basış onaylar.
 	_day_btn = Button.new()
 	_day_btn.text = ""
-	_day_btn.position = Vector2(1478, 618)
 	_day_btn.size = Vector2(92, 92)
 	_day_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_night_button(_day_btn)
@@ -130,10 +159,9 @@ func _build() -> void:
 	_day_icon = _add_btn_icon(_day_btn, _draw_day_icon)
 	_setup_hover(_day_btn)
 
-	# İfade Defteri butonu — gece butonunun solunda küçük yuvarlak (TAB kısayolu).
+	# İfade Defteri butonu — yörüngede gecenin ardından küçük yuvarlak (TAB kısayolu).
 	_log_btn = Button.new()
 	_log_btn.text = ""
-	_log_btn.position = Vector2(1392, 634)
 	_log_btn.size = Vector2(62, 62)
 	_log_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_log_btn.tooltip_text = Loc.t("log_btn_tip")
@@ -143,11 +171,10 @@ func _build() -> void:
 	_add_btn_icon(_log_btn, _draw_log_icon)
 	_setup_hover(_log_btn)
 
-	# Bilgi butonu — defterin solunda küçük yuvarlak "?" (Kurallar overlay'i açar).
+	# Bilgi butonu — yörüngede defterin ardından küçük yuvarlak "?" (Kurallar overlay'i).
 	# Ana menüdeki Kurallar butonu kaldırıldı; oyun içi erişim noktası burası + ESC.
 	_info_btn = Button.new()
 	_info_btn.text = ""
-	_info_btn.position = Vector2(1318, 634)
 	_info_btn.size = Vector2(62, 62)
 	_info_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_info_btn.tooltip_text = Loc.t("menu_rules")
@@ -157,11 +184,10 @@ func _build() -> void:
 	_add_btn_icon(_info_btn, _draw_info_icon)
 	_setup_hover(_info_btn)
 
-	# Sorgu satın alma butonu — "?"nin solunda, amber para pulu (yalnız seferde).
+	# Sorgu satın alma butonu — yörüngenin ucunda, amber para pulu (yalnız seferde).
 	# Fiyat her alışta tırmanır (GameState.question_price); etiket _draw'da.
 	_buyq_btn = Button.new()
 	_buyq_btn.text = ""
-	_buyq_btn.position = Vector2(1244, 634)
 	_buyq_btn.size = Vector2(62, 62)
 	_buyq_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_night_button(_buyq_btn)
@@ -170,6 +196,8 @@ func _build() -> void:
 	add_child(_buyq_btn)
 	_add_btn_icon(_buyq_btn, _draw_buyq_icon)
 	_setup_hover(_buyq_btn)
+
+	_layout_orbit()
 
 	# Hasar flaşı (tam ekran kızıl, başta görünmez)
 	_dmg_flash = ColorRect.new()
@@ -331,28 +359,14 @@ func play_intro() -> void:
 	ct.tween_interval(0.15)
 	ct.tween_method(func(v: float): _comp_off = v; queue_redraw(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
-	# Ayıkla/gece/defter butonları — sağdan giriş.
-	var ex0 := _execute_btn.position.x
-	var dx0 := _day_btn.position.x
-	var lg0 := _log_btn.position.x
-	var in0 := _info_btn.position.x
-	var bq0 := _buyq_btn.position.x
+	# Avla + yörünge uyduları — sağdan giriş (tüm düzen _legend_off ile birlikte kayar).
 	_legend_off = 560.0
-	_execute_btn.position.x = ex0 + 560.0
-	_day_btn.position.x = dx0 + 560.0
-	_log_btn.position.x = lg0 + 560.0
-	_info_btn.position.x = in0 + 560.0
-	_buyq_btn.position.x = bq0 + 560.0
+	_layout_orbit()
 	var lt := create_tween()
 	lt.tween_interval(0.22)
 	lt.tween_method(func(v: float):
 		_legend_off = v
-		_execute_btn.position.x = ex0 + v
-		_day_btn.position.x = dx0 + v
-		_log_btn.position.x = lg0 + v
-		_info_btn.position.x = in0 + v
-		_buyq_btn.position.x = bq0 + v
-		queue_redraw(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_layout_orbit(), 560.0, 0.0, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 	# Can küresi — soldan.
 	_globe_off = -360.0
@@ -629,8 +643,11 @@ func update_all() -> void:
 	_score_label.text = Loc.t("score_label") % GameState.score
 	# Sorgu satın alma yalnız seferde (para RunManager'da) ve köy aktifken.
 	if _buyq_btn != null:
+		var was := _buyq_btn.visible
 		_buyq_btn.visible = RunManager.has_active_run() and GameState.is_active()
 		_buyq_btn.tooltip_text = Loc.t("buyq_tip") % GameState.question_price()
+		if was != _buyq_btn.visible:
+			_layout_orbit()  # yörünge boşluk bırakmadan yeniden dizilsin
 	# Köy modifier ilanı (varsa) — kural baştan ve her an görünür (adalet §7.3).
 	var mods: Array = v.modifiers
 	_mod_strip["visible"] = not mods.is_empty()
@@ -716,6 +733,12 @@ func _draw() -> void:
 	# Sağ-alt yuvarlak butonların çerçeveleri: görünür GRİ-SİYAH halka + gölge
 	# (dalgalı siyah diskler koyu zeminde kayboluyordu — kullanıcı geri bildirimi).
 	var ring_gray := Color(0.29, 0.29, 0.32)  # siyaha yakın koyu gri (kullanıcı isteği)
+	# Yörünge yayı: uyduların merkezlerinden geçen soluk çizgi — butonlar Avla'nın
+	# çevresinde bir çember üzerinde duruyor hissi (butonların altında kalır).
+	if _execute_btn != null and _orbit_span != Vector2.ZERO:
+		var oc := ORBIT_CENTER + Vector2(_legend_off, 0)
+		draw_arc(oc, ORBIT_R, _orbit_span.x - 0.22, _orbit_span.y + 0.22, 40,
+			Color(ring_gray.r, ring_gray.g, ring_gray.b, 0.45), 2.0, true)
 	if _execute_btn != null:
 		var bc := _execute_btn.position + _execute_btn.size * 0.5
 		# Av modunda çerçeve kızıla döner (tehlikeli mod açık sinyali).
