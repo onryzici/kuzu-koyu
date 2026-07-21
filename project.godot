@@ -6,6 +6,7 @@ config_version=5
 [application]
 
 config/name="WOLF IN WOOL"
+config/version="1.0.0"
 config/description="Anadolu folk-horror sosyal cikarim / roguelike dedüksiyon kart oyunu."
 config/features=PackedStringArray("4.3")
 run/main_scene="res://scenes/boot.tscn"
@@ -23,6 +24,7 @@ GameMenu="*res://autoload/game_menu.gd"
 CursorSkin="*res://autoload/cursor_skin.gd"
 Fader="*res://autoload/fader.gd"
 Loc="*res://autoload/loc.gd"
+Updater="*res://autoload/updater.gd"
 
 [display]
 

@@ -522,6 +522,16 @@ const T := {
 		"en": "© 2026 Codezu · All rights reserved",
 	},
 
+	# ---- Otomatik güncelleme (updater) ----
+	"upd_title": {"tr": "YENİ SÜRÜM: v%s", "en": "NEW VERSION: v%s"},
+	"upd_body": {"tr": "Şu anki sürüm: v%s — güncelleme hazır.", "en": "Current version: v%s — an update is ready."},
+	"upd_now": {"tr": "Güncelle", "en": "Update"},
+	"upd_later": {"tr": "Sonra", "en": "Later"},
+	"upd_downloading": {"tr": "İndiriliyor... %%%d", "en": "Downloading... %d%%"},
+	"upd_restart": {"tr": "Kuruldu — yeniden başlatılıyor...", "en": "Installed — restarting..."},
+	"upd_failed": {"tr": "Güncelleme olmadı — elle indirebilirsin:", "en": "Update failed — you can download it manually:"},
+	"upd_open_page": {"tr": "İndirme Sayfası", "en": "Download Page"},
+
 	# ---- Duraklat menüsü (game_menu) ----
 	"pause_title": {"tr": "DURAKLADI", "en": "PAUSED"},
 	"pause_resume": {"tr": "Devam", "en": "Resume"},

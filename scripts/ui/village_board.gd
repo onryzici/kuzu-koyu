@@ -1233,8 +1233,7 @@ func _draw_fx_layer() -> void:
 	# V3.1 HİPOTEZ halkaları: varsayım altında kesinleşen koltuklar (bkz. §0.7 V3.1).
 	if _hypo_seat >= 0 and _hypo_seat < _cards.size():
 		var hc: Vector2 = _cards[_hypo_seat].position + _cards[_hypo_seat].size * 0.5
-		var pulse := 1.0 + 0.05 * sin(_time * 3.2)
-		_fx_layer.draw_arc(hc, 96.0 * pulse, 0, TAU, 48, Color(0.62, 0.40, 0.95, 0.85), 3.5, true)
+		_draw_hypo_ring(_fx_layer, hc, 96.0, Color(0.62, 0.40, 0.95, 0.85), _time * 0.55, true)
 		for s in _hypo_forced:
 			if s == _hypo_seat or s >= _cards.size():
 				continue
@@ -1244,7 +1243,36 @@ func _draw_fx_layer() -> void:
 			var cc: Vector2 = _cards[s].position + _cards[s].size * 0.5
 			var col := Color(0.86, 0.11, 0.06, 0.8) if _hypo_forced[s] == Enums.Alignment.EVIL \
 				else Color(0.32, 0.78, 0.42, 0.8)
-			_fx_layer.draw_arc(cc, 92.0, 0, TAU, 48, col, 2.5, true)
+			# Koltuğa göre faz kaydır: halkalar senkron dönmesin (organik his).
+			_draw_hypo_ring(_fx_layer, cc, 92.0, col, -_time * 0.4 + float(s) * 1.7, false)
+
+
+## Hipotez halkası: düz tek çizgi yerine ritüel mührü dili — nefes alan ana
+## halka + içte ince yankı çizgisi + yumuşak dış hale + üstünde yavaşça dönen
+## tılsım yayları ve uçlarında elmas perçinler. strong: varsayım koltuğu (mor).
+func _draw_hypo_ring(ci: CanvasItem, c: Vector2, radius: float, col: Color, spin: float, strong: bool) -> void:
+	var r := radius * (1.0 + 0.015 * sin(_time * 2.4 + spin * 3.0))
+	# Yumuşak dış hale: dışa doğru sönen katmanlar.
+	for i in range(3):
+		var f := 1.0 - float(i) / 3.0
+		ci.draw_arc(c, r + 4.0 + float(i) * 5.0, 0, TAU, 72,
+			Color(col.r, col.g, col.b, col.a * 0.09 * f), 6.0, true)
+	# Ana halka + içte ince yankı çizgisi (mühür dili).
+	ci.draw_arc(c, r, 0, TAU, 72, col, 2.8 if strong else 2.2, true)
+	ci.draw_arc(c, r - 6.0, 0, TAU, 72, Color(col.r, col.g, col.b, col.a * 0.30), 1.2, true)
+	# Dönen tılsım yayları: 4 kısa parlak yay ana halkanın üstünde süzülür.
+	var arc_len := TAU * 0.11
+	var bright := Color(col.r, col.g, col.b, minf(1.0, col.a * 1.2)).lightened(0.15)
+	for k in range(4):
+		var a0 := spin + TAU * float(k) * 0.25
+		ci.draw_arc(c, r, a0, a0 + arc_len, 16, bright, 4.6 if strong else 3.6, true)
+		# Yay ucunda minik elmas perçin (kart arkası perçinleriyle ayni dil).
+		var da := a0 + arc_len
+		var p := c + Vector2(cos(da), sin(da)) * r
+		var ds := 4.4 if strong else 3.4
+		ci.draw_colored_polygon(PackedVector2Array([
+			p + Vector2(0, -ds), p + Vector2(ds, 0), p + Vector2(0, ds), p + Vector2(-ds, 0),
+		]), bright)
 
 
 ## Kartın SON ifadesi yön/mesafe tipiyse döndür; değilse null.
