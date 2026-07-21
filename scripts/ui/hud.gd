@@ -698,7 +698,7 @@ func set_execute_mode(on: bool) -> void:
 	if _exec_icon != null:
 		_exec_icon.queue_redraw()
 	if on:
-		flash_banner(Loc.t("hunt_mode_on"), Palette.BLOOD)
+		flash_banner(Loc.t("hunt_mode_on"), Palette.BLOOD, true)  # modlu istem: ortada
 	else:
 		flash_banner(Loc.t("hunt_mode_off"), Palette.SAFFRON)
 
@@ -1007,9 +1007,17 @@ func _on_executed(_seat: int, was_evil: bool) -> void:
 	update_all()
 
 
-func flash_banner(text: String, color: Color) -> void:
+## center=true: mesaj ekran ORTASINDA açılır (hedef seçimi gibi modlu istemler);
+## varsayılan: alt bant (akış bildirimleri oyun alanını kapatmasın).
+func flash_banner(text: String, color: Color, center: bool = false) -> void:
 	if _banner != null:
-		_banner.show_message(text, color)
+		_banner.show_message(text, color, center)
+
+
+## Açık duran duyuru bandını katla (mod iptallerinde yazı asılı kalmasın).
+func clear_banner() -> void:
+	if _banner != null:
+		_banner.clear()
 
 
 ## Board'un sahiplendiği duyuru şeridini bağla (gece HUD kaybolsa da şerit kalır).

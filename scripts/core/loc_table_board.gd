@@ -33,8 +33,8 @@ const T := {
 	},
 	# --- V3.1: Yüzleştirme (Y) ---
 	"confront_pick": {
-		"tr": "YÜZLEŞTİRME — #%d kimin hakkında konuşsun? Hedef kartı tıkla (2 sorgu hakkı harcar) · vazgeç: aynı karta tıkla",
-		"en": "CONFRONTATION — who should #%d speak about? Click a target (costs 2 questions) · cancel: same card",
+		"tr": "YÜZLEŞTİRME — #%d kimin hakkında konuşsun? Hedef kartı tıkla (2 sorgu hakkı harcar) · vazgeç: tekrar Y ya da aynı karta tıkla",
+		"en": "CONFRONTATION — who should #%d speak about? Click a target (costs 2 questions) · cancel: press Y again or click the same card",
 	},
 	"confront_no_q": {
 		"tr": "Yüzleştirme için 2 sorgu hakkı gerekiyor — bugünlük hakkın yetmiyor.",

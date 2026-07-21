@@ -617,7 +617,7 @@ func _update_hypothesis() -> void:
 	_hypo_worlds = filtered.size()
 	if filtered.is_empty():
 		if _hud != null:
-			_hud.flash_banner(Loc.t("hypo_impossible") % [_hypo_seat, _hypo_seat], Palette.SAFFRON)
+			_hud.flash_banner(Loc.t("hypo_impossible") % [_hypo_seat, _hypo_seat], Palette.SAFFRON, true)
 		SaveManager.unlock_achievement("ach_hypo_proof")  # olmayana ergi ustası
 		_hypo_seat = -1
 		return
@@ -648,7 +648,7 @@ func _toggle_hypothesis(seat: int) -> void:
 	_hypo_seat = seat
 	_update_hypothesis()
 	if _hypo_seat >= 0 and _hud != null:
-		_hud.flash_banner(Loc.t("hypo_on") % [seat, _hypo_worlds], Color(0.72, 0.55, 0.98))
+		_hud.flash_banner(Loc.t("hypo_on") % [seat, _hypo_worlds], Color(0.72, 0.55, 0.98), true)
 
 
 ## a ve b AYNI ANDA dürüst-İYİ olabilir mi? Kompozisyon + kefiller + cesetler +
@@ -928,7 +928,9 @@ func _on_questioned(seat: int) -> void:
 
 func _on_question_denied(_seat: int, reason: String) -> void:
 	if _hud != null:
-		_hud.flash_banner(reason.capitalize(), Palette.SAFFRON)
+		# capitalize() KULLANMA: Türkçe'de her kelimeyi büyütüp "Ister" gibi hatalı
+		# başlıklar üretiyordu; loc metinleri zaten düzgün cümle.
+		_hud.flash_banner(reason, Palette.SAFFRON, true)
 
 
 ## GECE SEKANSI: karanlık çöker, kurt avlanır (kurban kartları pençelenir), şafak söker.
@@ -1644,7 +1646,7 @@ func _on_card_clicked(seat: int) -> void:
 		var pc := GameState.village.get_character(seat)
 		if not pc.is_alive():
 			if _hud != null:
-				_hud.flash_banner(Loc.t("pen_dead_denied"), Color("9db8e8"))
+				_hud.flash_banner(Loc.t("pen_dead_denied"), Color("9db8e8"), true)
 			return
 		_protect_mode = false
 		_refresh_cards()
@@ -1656,6 +1658,8 @@ func _on_card_clicked(seat: int) -> void:
 	if _confront_seat >= 0:
 		var cf := _confront_seat
 		_confront_seat = -1
+		if _hud != null:
+			_hud.clear_banner()  # "YÜZLEŞTİRME — ..." yazısı asılı kalmasın
 		if seat != cf:
 			GameState.confront(cf, seat)
 		_refresh_cards()
@@ -1690,7 +1694,7 @@ func _on_card_clicked(seat: int) -> void:
 				vt = Loc.t("target_verb_hunt")
 			elif c.role == &"Trapper":
 				vt = Loc.t("target_verb_trap")
-			_hud.flash_banner(Loc.t("target_pick") % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON)
+			_hud.flash_banner(Loc.t("target_pick") % [RoleNames.display(c.role).to_upper(), vt], Palette.SAFFRON, true)
 		_refresh_cards()
 		return
 	# V2: tık = SORGU (1 hak harcar; karakter sıradaki ifadesini verir).
@@ -1712,7 +1716,7 @@ func _on_end_day() -> void:
 			var extra := ""
 			if GameState.village.questions_left > 0:
 				extra = Loc.t("pen_qwarn") % GameState.village.questions_left
-			_hud.flash_banner(Loc.t("pen_prompt") % extra, Color("9db8e8"))
+			_hud.flash_banner(Loc.t("pen_prompt") % extra, Color("9db8e8"), true)
 		_refresh_cards()  # mavi koruma halesi
 		return
 	_protect_mode = false
@@ -1796,12 +1800,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					return
 				if _confront_seat >= 0:
 					_confront_seat = -1  # açıkken tekrar Y = iptal
+					if _hud != null:
+						_hud.clear_banner()
 				elif _hovered_seat >= 0:
 					var cc := GameState.village.get_character(_hovered_seat)
 					if cc.is_alive():
 						_confront_seat = _hovered_seat
 						if _hud != null:
-							_hud.flash_banner(Loc.t("confront_pick") % _confront_seat, Palette.SAFFRON)
+							_hud.flash_banner(Loc.t("confront_pick") % _confront_seat, Palette.SAFFRON, true)
 
 
 ## TAB burada (unhandled değil): UI odak gezintisi (buton sekmesi) TAB'ı yutuyordu.
