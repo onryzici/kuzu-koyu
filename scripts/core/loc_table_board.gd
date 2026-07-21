@@ -33,50 +33,50 @@ const T := {
 	},
 	# --- V3.1: Yüzleştirme (Y) ---
 	"confront_pick": {
-		"tr": "YÜZLEŞTİRME — #%d kimin hakkında konuşsun? Hedefi tıkla (2 sorgu hakkı) · iptal: aynı kart",
+		"tr": "YÜZLEŞTİRME — #%d kimin hakkında konuşsun? Hedef kartı tıkla (2 sorgu hakkı harcar) · vazgeç: aynı karta tıkla",
 		"en": "CONFRONTATION — who should #%d speak about? Click a target (costs 2 questions) · cancel: same card",
 	},
 	"confront_no_q": {
-		"tr": "Yüzleştirme 2 sorgu hakkı ister — hakkın yetmiyor.",
-		"en": "A confrontation costs 2 questions — you don't have enough.",
+		"tr": "Yüzleştirme için 2 sorgu hakkı gerekiyor — bugünlük hakkın yetmiyor.",
+		"en": "A confrontation costs 2 questions — you don't have enough today.",
 	},
 	"confront_pair_used": {
-		"tr": "Bu ikiliyi zaten yüzleştirdin — aynı soruya aynı cevap.",
+		"tr": "Bu ikiliyi zaten yüzleştirdin — aynı soru aynı cevabı verir.",
 		"en": "You already confronted this pair — same question, same answer.",
 	},
 	"confront_hint": {
-		"tr": "İpucu: Y ile yüzleştirme — bir kartı seç, hedefi tıklat; 2 sorguya nokta atışı cevap.",
-		"en": "Tip: press Y to confront — pick a card, click a target; a pointed answer for 2 questions.",
+		"tr": "İPUCU: Y'ye bas → önce konuşacak kartı, sonra hedefi tıkla. 2 sorgu karşılığında hedef hakkında doğrudan ifade alırsın.",
+		"en": "TIP: press Y → pick the speaker, then click a target; a direct statement about them for 2 questions.",
 	},
 	# --- V3.1: Hipotez modu (H) ---
 	"hypo_on": {
-		"tr": "HİPOTEZ: '#%d kurt' varsayımı — %d dünya tutuyor. Halkalar: kızıl=kesin kurt, yeşil=kesin koyun. Kapat: H",
-		"en": "HYPOTHESIS: assuming '#%d is a wolf' — %d worlds hold. Rings: red=certain wolf, green=certain sheep. Toggle off: H",
+		"tr": "HİPOTEZ — \"#%d kurt olsaydı?\" Bu varsayımla %d olasılık ayakta. Kızıl halka: kesin kurt · yeşil halka: kesin koyun · kapat: H",
+		"en": "HYPOTHESIS — \"what if #%d is a wolf?\" %d worlds still hold. Red ring: certain wolf · green ring: certain sheep · close: H",
 	},
 	"hypo_off": {
 		"tr": "Hipotez kapatıldı.",
 		"en": "Hypothesis cleared.",
 	},
 	"hypo_impossible": {
-		"tr": "İMKÂNSIZ: hiçbir tutarlı dünyada #%d kurt değil — bu da kanıttır: #%d KOYUN.",
-		"en": "IMPOSSIBLE: no consistent world has #%d as a wolf — which is proof itself: #%d is a SHEEP.",
+		"tr": "OLAMAZ — #%d kurt olsa hiçbir çözüm tutmuyor. Demek ki #%d kesin KOYUN. Bunu kanıt say!",
+		"en": "IMPOSSIBLE — no solution holds if #%d is a wolf. So #%d is certainly a SHEEP. Count it as proof!",
 	},
 	# --- Bağlam ipuçları (bir kez gösterilir) + tuş rehberi ---
 	"hint_hypo": {
-		"tr": "İPUCU: bir kartın üstünde H'ye bas — 'farz et bu kurt' de, kesinleşenler halkalarla görünsün.",
-		"en": "TIP: press H over a card — assume 'this is the wolf' and watch the certainties light up as rings.",
+		"tr": "İPUCU: imleç bir kartın üstündeyken H'ye bas — \"ya bu kurtsa?\" varsayımı kurulur, kesinleşenler halkayla yanar.",
+		"en": "TIP: hover a card and press H — a \"what if this is the wolf?\" assumption is made, and certainties light up as rings.",
 	},
 	"hint_confront": {
-		"tr": "İPUCU: Y ile YÜZLEŞTİRME — bir kart seç, hedefi tıkla; 2 sorguya nokta atışı cevap alırsın.",
-		"en": "TIP: press Y to CONFRONT — pick a card, click a target; a pointed answer for 2 questions.",
+		"tr": "İPUCU: Y ile YÜZLEŞTİRME — önce konuşacak kartı seç, sonra hedefi tıkla; 2 sorguya hedef hakkında doğrudan ifade.",
+		"en": "TIP: press Y to CONFRONT — pick the speaker, then click a target; a direct statement for 2 questions.",
 	},
 	"hint_herb": {
 		"tr": "İPUCU: bu köyde OTACI var — günün SON sorgusu onun gece hedefi olur. Son sorgunu silaha çevir.",
 		"en": "TIP: this village has a HERBALIST — your LAST question of the day becomes their night target. Aim it.",
 	},
 	"key_guide": {
-		"tr": "Tık: Sorgu  ·  E: Avla  ·  G: Gece  ·  Y: Yüzleştir  ·  H: Hipotez  ·  TAB: Defter  ·  1-5: İşaret  ·  F8: Geri bildirim",
-		"en": "Click: Question  ·  E: Cull  ·  G: Night  ·  Y: Confront  ·  H: Hypothesis  ·  TAB: Journal  ·  1-5: Mark  ·  F8: Feedback",
+		"tr": "Sol tık: Sorgula  ·  Sağ tık: İşaretle  ·  E: Avla  ·  G: Geceyi Getir  ·  Y: Yüzleştir  ·  H: Hipotez  ·  TAB: Defter  ·  F8: Hata Bildir",
+		"en": "Left click: Question  ·  Right click: Mark  ·  E: Cull  ·  G: Bring the Night  ·  Y: Confront  ·  H: Hypothesis  ·  TAB: Ledger  ·  F8: Report a Bug",
 	},
 	# --- Kanıt zinciri (köy sonu özeti) ---
 	"ev_header": {

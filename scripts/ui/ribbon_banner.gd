@@ -1,10 +1,11 @@
 class_name RibbonBanner
 extends Control
 
-## Alt-orta DUYURU ŞERİDİ: sivri uçlu koyu bant + klasik ofset gölge + uçlarda
-## katlanmış kuyruklar. Mesaj gelince ortadan AÇILARAK belirir (unfold), metin
-## ardından süzülür; boş mesaj şeridi katlar. "AĞIL — koruyacağın kartı seç",
-## "AV MODU" gibi tüm anlık duyurular buradan geçer (eski düz Label yerine).
+## EKRAN ORTASI DUYURU BANDI: tam genişlik, kenarlara doğru eriyen koyu şerit +
+## mesaj renginde üst/alt kenar çizgileri (sinematik "letterbox" dili). Mesaj
+## gelince bant dikeyde AÇILARAK belirir, metin ardından süzülür; boş mesaj bandı
+## kapatır. "AĞIL — koruyacağın kartı seç", "AV MODU" gibi tüm anlık duyurular
+## buradan geçer. (Eski alt-köşe sivri şerit tasarımı kullanıcı isteğiyle emekli.)
 
 var _text := ""
 var _color := Color("e4a72e")
@@ -15,9 +16,7 @@ var _swap_pop := 0.0    ## açıkken mesaj değişirse metin küçük bir pop ya
 
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	offset_top = -84
-	offset_bottom = -14
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = 260  # gece letterbox (200) ve karartma (250) üstü
 
@@ -49,10 +48,17 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-static func _ease_out_back(p: float) -> float:
-	var c1 := 1.70158
-	var c3 := c1 + 1.0
-	return 1.0 + c3 * pow(p - 1.0, 3.0) + c1 * pow(p - 1.0, 2.0)
+## Yatayda kenarlara doğru eriyen tam genişlik şerit (iki yarım quad, vertex
+## renkleriyle gradyan — merkez yoğun, uçlar şeffaf).
+func _fading_band(y: float, h: float, col_mid: Color) -> void:
+	var half_w := size.x * 0.5
+	var clear := Color(col_mid.r, col_mid.g, col_mid.b, 0.0)
+	draw_polygon(PackedVector2Array([
+		Vector2(0, y), Vector2(half_w, y), Vector2(half_w, y + h), Vector2(0, y + h),
+	]), PackedColorArray([clear, col_mid, col_mid, clear]))
+	draw_polygon(PackedVector2Array([
+		Vector2(half_w, y), Vector2(size.x, y), Vector2(size.x, y + h), Vector2(half_w, y + h),
+	]), PackedColorArray([col_mid, clear, clear, col_mid]))
 
 
 func _draw() -> void:
@@ -61,48 +67,27 @@ func _draw() -> void:
 	var font := get_theme_default_font()
 	if font == null:
 		return
-	var fs := 20
-	var e := _ease_out_back(clampf(_open, 0.0, 1.0))
-	var text_w := font.get_string_size(_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var w := (text_w + 130.0) * maxf(e, 0.06)
-	var h := 46.0
-	var c := Vector2(size.x * 0.5, size.y * 0.5)
-	var bevel := minf(18.0, w * 0.25)
+	var e := 1.0 - pow(1.0 - clampf(_open, 0.0, 1.0), 3.0)  # ease-out cubic
+	var cy := size.y * 0.5
+	var h := 78.0 * e
+	var half := h * 0.5
 
-	# Sivri uçlu şerit gövdesi (klasik bant silueti).
-	var body := PackedVector2Array([
-		c + Vector2(-w * 0.5, 0), c + Vector2(-w * 0.5 + bevel, -h * 0.5),
-		c + Vector2(w * 0.5 - bevel, -h * 0.5), c + Vector2(w * 0.5, 0),
-		c + Vector2(w * 0.5 - bevel, h * 0.5), c + Vector2(-w * 0.5 + bevel, h * 0.5),
-	])
+	# Koyu ana bant (merkezde yoğun, uçlarda eriyen).
+	_fading_band(cy - half, h, Color(0.02, 0.008, 0.015, 0.88 * e))
+	# Mesaj renginde üst/alt kenar çizgileri (aynı erime).
+	var edge := Color(_color.r, _color.g, _color.b, 0.85 * e)
+	_fading_band(cy - half - 1.2, 2.4, edge)
+	_fading_band(cy + half - 1.2, 2.4, edge)
+	# Bandın içinde, metnin arkasında çok hafif renk soluğu (mesajın rengi hissedilsin).
+	_fading_band(cy - half * 0.5, half, Color(_color.r, _color.g, _color.b, 0.05 * e))
 
-	# Uç kuyrukları: şerit tam açılınca uçlardan aşağı katlanır (gövdeden ÖNCE — arkada).
-	if _open > 0.88:
-		var ta2 := clampf((_open - 0.88) / 0.12, 0.0, 1.0)
-		for side in [-1.0, 1.0]:
-			var tip := c + Vector2(side * (w * 0.5 - 2.0), 0.0)
-			draw_colored_polygon(PackedVector2Array([
-				tip, tip + Vector2(side * 16.0 * ta2, 12.0 * ta2), tip + Vector2(side * 3.0, 18.0 * ta2),
-			]), Color(0.01, 0.005, 0.01, 0.9 * ta2))
-
-	# Klasik ofset gölge (panellerle aynı dil) + gövde.
-	var sh := PackedVector2Array()
-	for p in body:
-		sh.append(p + Vector2(6, 7))
-	draw_colored_polygon(sh, Color(0, 0, 0, 0.55))
-	draw_colored_polygon(body, Color(0.02, 0.01, 0.02, 0.96))
-	# Üstte ince ışık, altta mesaj renginde vurgu çizgisi.
-	draw_line(body[1], body[2], Color(1, 1, 1, 0.07), 1.2)
-	draw_line(body[5] + Vector2(4, -2), body[4] + Vector2(-4, -2),
-		Color(_color.r, _color.g, _color.b, 0.85), 2.4)
-
-	# Metin: şerit açıldıktan sonra süzülür; mesaj tazelenince minik pop.
-	var ta := clampf((_open - 0.55) / 0.45, 0.0, 1.0)
+	# Metin: bant açıldıktan sonra süzülür; mesaj tazelenince minik pop.
+	var ta := clampf((_open - 0.45) / 0.55, 0.0, 1.0)
 	if ta > 0.01:
-		var fs2 := int(fs * (1.0 + 0.07 * _swap_pop))
+		var fs2 := int(23.0 * (1.0 + 0.07 * _swap_pop))
 		var tw2 := font.get_string_size(_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x
-		var tp := Vector2(c.x - tw2 * 0.5, c.y + fs2 * 0.34)
-		draw_string_outline(font, tp, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, 4,
-			Color(0, 0, 0, 0.8 * ta))
+		var tp := Vector2(size.x * 0.5 - tw2 * 0.5, cy + fs2 * 0.34)
+		draw_string_outline(font, tp, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, 5,
+			Color(0, 0, 0, 0.85 * ta))
 		draw_string(font, tp, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2,
 			Color(_color.r, _color.g, _color.b, ta))

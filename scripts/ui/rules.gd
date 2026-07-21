@@ -14,8 +14,11 @@ const SECTIONS := [
 	["☾", "rules_s2_title", "rules_s2_body"],
 	["✦", "rules_s3_title", "rules_s3_body"],
 	["❖", "rules_s4_title", "rules_s4_body"],
+	["✧", "rules_s11_title", "rules_s11_body"],   # dedektif araçları (Y/H/TAB)
 	["▤", "rules_s5_title", "rules_s5_body"],
+	["!", "rules_s13_title", "rules_s13_body"],   # köy kuralları (modifier ilanı)
 	["✧", "rules_s6_title", "rules_s6_body"],
+	["☾", "rules_s12_title", "rules_s12_body"],   # gece trafiği rolleri
 	["!", "rules_s7_title", "rules_s7_body"],
 	["◉", "rules_s8_title", "rules_s8_body"],
 	["➤", "rules_s9_title", "rules_s9_body"],

@@ -510,10 +510,17 @@ func _draw_info_icon(ic: Control) -> void:
 
 
 ## Gece butonu ikonu: dolgun HİLAL (gerçek iki-çember kesişimiyle hesaplanmış
-## kavis) + minik yıldızlar. Altında "GECE".
+## kavis) + minik yıldızlar. Sorgu hakları bitince sıradaki hamle gece:
+## AY PARLAR — hilalin ardında nabız gibi büyüyüp sönen sıcak hale.
 func _draw_day_icon(ic: Control) -> void:
 	var moon := Color("f2e6bf")
 	var c := ic.size * 0.5
+	if GameState.village != null and GameState.is_active() and GameState.village.questions_left <= 0:
+		var g := 0.5 + 0.5 * sin(_t * 3.2)
+		for i in range(4):
+			var f := 1.0 - float(i) / 4.0
+			ic.draw_circle(c, 20.0 + float(i) * 8.0 + 4.0 * g,
+				Color(moon.r, moon.g, moon.b, (0.05 + 0.05 * g) * f))
 	# Hilal poligonu: dış çember r=13, kesen çember merkez +7x r=10.
 	# Kesişim açıları: dışta ±49.6° (0.867 rad), kesende ±81.8° (1.427 rad).
 	var pts := PackedVector2Array()
@@ -538,32 +545,32 @@ func _draw_day_icon(ic: Control) -> void:
 ## Yavaşça döner + nefes alır. Av modunda vazgeç çarpısı. Yazı yok (ikon yeter).
 func _draw_exec_icon(ic: Control) -> void:
 	var cream := Color("fff2dc")
-	var red := Color(0.84, 0.17, 0.12)
 	var c := ic.size * 0.5
 	if _exec_mode:
 		# Vazgeç: kalın çarpı.
 		ic.draw_line(c + Vector2(-13, -13), c + Vector2(13, 13), cream, 6.0)
 		ic.draw_line(c + Vector2(13, -13), c + Vector2(-13, 13), cream, 6.0)
 		return
+	# Kızıl gövde üstünde retikül KREM çizilir (kızıl-üstü-kızıl okunmuyordu).
 	var rot := _t * 0.5                      # yavaş retikül dönüşü
 	var r := 19.0 + 1.0 * sin(_t * 2.2)      # nefes
 	# Dış halka: tırnak hizalarında boşluk bırakan 4 yay (retikül dili).
 	for k in range(4):
 		var a0 := rot + PI * 0.5 * float(k) + 0.30
-		ic.draw_arc(c, r, a0, a0 + PI * 0.5 - 0.60, 18, red, 2.6, true)
+		ic.draw_arc(c, r, a0, a0 + PI * 0.5 - 0.60, 18, cream, 2.6, true)
 	# Tırnaklar: halkadan İÇERİ uzanan 4 çizgi (boşlukların ortasından).
 	for k in range(4):
 		var a := rot + PI * 0.5 * float(k)
 		var dirv := Vector2(cos(a), sin(a))
-		ic.draw_line(c + dirv * (r + 3.0), c + dirv * (r - 7.0), red, 2.6)
+		ic.draw_line(c + dirv * (r + 3.0), c + dirv * (r - 7.0), cream, 2.6)
 	# İnce iç artı (merkeze değmez — hedef noktası nefes alsın).
 	for k in range(4):
 		var a := rot + PI * 0.5 * float(k)
 		var dirv := Vector2(cos(a), sin(a))
-		ic.draw_line(c + dirv * 9.0, c + dirv * 4.5, Color(red.r, red.g, red.b, 0.75), 1.6)
+		ic.draw_line(c + dirv * 9.0, c + dirv * 4.5, Color(cream.r, cream.g, cream.b, 0.75), 1.6)
 	# Merkez nokta + dışına çok ince soluk halka.
-	ic.draw_circle(c, 2.2, Color(1.0, 0.42, 0.32))
-	ic.draw_arc(c, 12.5, 0, TAU, 28, Color(red.r, red.g, red.b, 0.28), 1.2, true)
+	ic.draw_circle(c, 2.2, Color(1.0, 0.96, 0.86))
+	ic.draw_arc(c, 12.5, 0, TAU, 28, Color(cream.r, cream.g, cream.b, 0.30), 1.2, true)
 
 
 func _on_day_btn() -> void:
@@ -585,13 +592,13 @@ func _style_night_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_hover_color", Color("ffffff"))
 
 
-## Ayıkla butonu: koyu antrasit (kızıl alt-ton) daire — kızıl göz ikonu üstünde
-## patlar; görünür gri-siyah halka _draw'daki _draw_button_frame'den gelir.
+## Avla butonu: KOMPLE KIZIL daire (kullanıcı isteği) — üstünde krem nişangâh;
+## çevresindeki dalgalı KIZIL border _draw'da çizilir (can küresiyle aynı dil).
 func _style_round_button(btn: Button) -> void:
-	var base := Color("1a1013")
+	var base := Color(0.48, 0.08, 0.06)
 	for state in ["normal", "hover", "pressed"]:
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = base if state == "normal" else (base.lightened(0.10) if state == "hover" else base.darkened(0.35))
+		sb.bg_color = base if state == "normal" else (base.lightened(0.12) if state == "hover" else base.darkened(0.25))
 		sb.set_corner_radius_all(58)  # yarıçap = boyut/2 -> tam daire
 		sb.set_border_width_all(0)
 		btn.add_theme_stylebox_override(state, sb)
@@ -764,14 +771,24 @@ func _draw() -> void:
 			Color(ring_gray.r, ring_gray.g, ring_gray.b, 0.45), 2.0, true)
 	if _execute_btn != null:
 		var bc := _execute_btn.position + _execute_btn.size * 0.5
-		# Av modunda çerçeve kızıla döner (tehlikeli mod açık sinyali).
-		_draw_button_frame(bc, 58.0, Palette.BLOOD.lightened(0.12) if _exec_mode else ring_gray, _execute_btn.is_hovered())
+		# Avla: kızıl gövdenin çevresine DALGALI KIZIL border (can küresiyle aynı
+		# organik dil — kullanıcı isteği: "komple kırmızı, dalgalı border da kırmızı").
+		var hovered := _execute_btn.is_hovered()
+		var rr := 58.0 * (1.08 if hovered else 1.0)
+		draw_circle(bc + Vector2(0, 5), rr + 10.0, Color(0, 0, 0, 0.35))
+		if hovered:
+			draw_circle(bc, rr + 24.0, Color(0.9, 0.18, 0.10, 0.06))
+			draw_circle(bc, rr + 12.0, Color(0.9, 0.18, 0.10, 0.10))
+		_draw_wavy_disc(bc, rr + 9.0, Color(0.26, 0.025, 0.02, 1.0), _t * 1.1, 7.0)
+		_draw_wavy_disc(bc, rr + 3.0, Color(0.60, 0.09, 0.06, 1.0), -_t * 0.8, 4.0)
+		# Av modu açıkken dışta nabızlı parlak kızıl halka (tehlike sinyali).
+		if _exec_mode:
+			var ea := 0.45 + 0.30 * sin(_t * 5.0)
+			draw_arc(bc, rr + 16.0, 0, TAU, 56, Color(1.0, 0.36, 0.24, ea), 3.0, true)
 	if _day_btn != null:
 		var dc := _day_btn.position + _day_btn.size * 0.5
-		# Sorgu hakları bitti → sıradaki hamle gece: buton nabız gibi çağırır.
-		if GameState.village != null and GameState.is_active() and GameState.village.questions_left <= 0:
-			var na := 0.30 + 0.30 * sin(_t * 4.0)
-			draw_arc(dc, 60.0 + 3.0 * sin(_t * 4.0), 0, TAU, 48, Color(0.62, 0.72, 1.0, na), 3.5)
+		# (Sorgular bitince buton çağrısı ay ışığıyla: parlama _draw_day_icon'da —
+		# eski mor halka kullanıcı isteğiyle kaldırıldı.)
 		_draw_button_frame(dc, 46.0, ring_gray, _day_btn.is_hovered())
 	if _log_btn != null:
 		var lc := _log_btn.position + _log_btn.size * 0.5
@@ -856,34 +873,98 @@ func _comp_chip(font: Font, center: Vector2, kind: String, col: Color, count: in
 	draw_string(font, center + Vector2(-ls.x * 0.5, 46.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.IVORY.darkened(0.15))
 
 
+## Döndürülmüş elips poligonu (ikon parçaları: kulak, parmak, yaprak...).
+func _ellipse_pts(c: Vector2, rx: float, ry: float, rot: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(14):
+		var a := TAU * float(i) / 14.0
+		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry).rotated(rot))
+	return pts
+
+
 ## Küçük prosedürel kategori ikonları (~20px). Özgün; telifli ikon kopyalanmaz.
+## Elden geçirilmiş set (kullanıcı isteği): daha okunur siluet + iki tonlu derinlik.
 func _draw_comp_icon(kind: String, c: Vector2, col: Color) -> void:
 	match kind:
-		"sheep":  # koyun: beyaz yün öbeği + koyu baş
-			var wool := Color("efe7d6")
-			draw_circle(c + Vector2(-7, 0), 7.0, wool)
-			draw_circle(c + Vector2(7, 0), 7.0, wool)
-			draw_circle(c + Vector2(0, -5), 8.0, wool)
-			draw_circle(c + Vector2(0, 4), 6.5, wool)
-			draw_circle(c + Vector2(0, 7), 4.5, Color("30271f"))
-		"flame":  # parya: amber alev
+		"sheep":  # koyun: gölgeli yün bulutu + sarkık kulaklı koyu yüz
+			var wool := Color("f2ead9")
+			var shade := Color("cfc2a6")
+			# Alt gölge yumakları (bulut derinliği).
+			for w: Vector2 in [Vector2(-7.5, 3.0), Vector2(0.0, 5.0), Vector2(7.5, 3.0)]:
+				draw_circle(c + w, 5.8, shade)
+			# Ana yün bulutu: üstte küçük, yanlarda geniş öbekler.
+			for w: Vector2 in [Vector2(-8.0, -1.0), Vector2(-3.5, -5.5), Vector2(2.5, -6.0),
+					Vector2(7.5, -2.0), Vector2(0.0, -1.0)]:
+				draw_circle(c + w, 6.2, wool)
+			# Yüz: koyu oval + iki sarkık kulak + perçem.
+			var head := c + Vector2(0.0, 5.0)
+			draw_colored_polygon(_ellipse_pts(head + Vector2(-7.0, -1.0), 3.4, 2.0, 0.5), Color("241c15"))
+			draw_colored_polygon(_ellipse_pts(head + Vector2(7.0, -1.0), 3.4, 2.0, -0.5), Color("241c15"))
+			draw_colored_polygon(_ellipse_pts(head, 4.6, 5.2, 0.0), Color("32281e"))
+			draw_circle(head + Vector2(0.0, -4.2), 3.0, wool)  # perçem
+			draw_circle(head + Vector2(-1.8, -0.5), 0.9, Color("efe7d6"))  # gözler
+			draw_circle(head + Vector2(1.8, -0.5), 0.9, Color("efe7d6"))
+		"flame":  # parya: iki katmanlı kandil alevi + kor çekirdek + kıvılcım
 			var f := col.lightened(0.05)
+			var core := Color("fff0c8")
+			# Dış alev: iğ biçimli, tepesi rüzgârda hafif yana yatık.
 			draw_colored_polygon(PackedVector2Array([
-				c + Vector2(0, -11), c + Vector2(-7, 3), c + Vector2(7, 3)]), f)
-			draw_circle(c + Vector2(0, 4), 6.0, f)
-			draw_circle(c + Vector2(0, 3), 3.0, Color("fff0c8"))
-		"paw":  # kurt: pati izi
+				c + Vector2(1.5, -12.0), c + Vector2(-2.5, -6.5), c + Vector2(-6.5, -1.0),
+				c + Vector2(-6.0, 4.5), c + Vector2(-3.0, 8.0), c + Vector2(0.0, 9.0),
+				c + Vector2(3.0, 8.0), c + Vector2(6.0, 4.5), c + Vector2(6.0, -1.5),
+				c + Vector2(3.0, -6.0),
+			]), f)
+			# İç alev (açık ton) + kor çekirdek.
+			draw_colored_polygon(PackedVector2Array([
+				c + Vector2(0.5, -5.5), c + Vector2(-3.2, 0.5), c + Vector2(-2.6, 5.0),
+				c + Vector2(0.0, 6.8), c + Vector2(2.6, 5.0), c + Vector2(3.2, 0.0),
+			]), core)
+			draw_circle(c + Vector2(0.0, 4.0), 1.8, Color("fffaea"))
+			# Tepeden kopan minik kıvılcım.
+			draw_circle(c + Vector2(4.0, -10.5), 1.2, f)
+		"paw":  # kurt: geniş yastıklı pati + yelpaze parmaklar + pençe uçları
 			var p := col.lightened(0.12)
-			draw_circle(c + Vector2(0, 5), 7.5, p)
-			for toe in [Vector2(-8, -3), Vector2(-3, -9), Vector2(3, -9), Vector2(8, -3)]:
-				draw_circle(c + toe, 3.6, p)
-		"skull":  # alfa: kafatası (kemik + kızıl göz çukuru)
+			var claw := col.lightened(0.35)
+			# Ana yastık: kalp benzeri üç lob.
+			draw_circle(c + Vector2(0.0, 3.5), 6.0, p)
+			draw_circle(c + Vector2(-3.4, 6.0), 4.4, p)
+			draw_circle(c + Vector2(3.4, 6.0), 4.4, p)
+			# Parmaklar: dört eğik oval, yelpaze diziliş + uçlarında sivri pençe.
+			var toes := [
+				[Vector2(-8.5, -2.0), 0.55], [Vector2(-3.0, -7.0), 0.2],
+				[Vector2(3.0, -7.0), -0.2], [Vector2(8.5, -2.0), -0.55],
+			]
+			for t: Array in toes:
+				var tp: Vector2 = c + t[0]
+				var rot: float = t[1]
+				draw_colored_polygon(_ellipse_pts(tp, 2.6, 3.6, rot), p)
+				var up := Vector2(0, -4.6).rotated(rot)
+				var side := Vector2(1.3, 0).rotated(rot)
+				draw_colored_polygon(PackedVector2Array([
+					tp + up, tp + side - Vector2(0, 1.4).rotated(rot), tp - side - Vector2(0, 1.4).rotated(rot),
+				]), claw)
+		"skull":  # alfa: kurt kafatası — kubbe + çene + kor gözler + diş sırası
 			var bone := Color("e8dcc4")
-			draw_circle(c + Vector2(0, -2), 9.0, bone)
+			var bone_dark := Color("c4b697")
+			# Kubbe + elmacıklar.
+			draw_circle(c + Vector2(0.0, -3.5), 8.6, bone)
+			draw_circle(c + Vector2(-6.5, 0.5), 3.4, bone)
+			draw_circle(c + Vector2(6.5, 0.5), 3.4, bone)
+			# Çene: hafif daralan yamuk + gölge ayrımı.
 			draw_colored_polygon(PackedVector2Array([
-				c + Vector2(-5, 4), c + Vector2(5, 4), c + Vector2(3.5, 11), c + Vector2(-3.5, 11)]), bone)
-			draw_circle(c + Vector2(-3.6, -2), 2.6, Color("6a0e0e"))
-			draw_circle(c + Vector2(3.6, -2), 2.6, Color("6a0e0e"))
+				c + Vector2(-5.5, 2.5), c + Vector2(5.5, 2.5),
+				c + Vector2(3.8, 10.5), c + Vector2(-3.8, 10.5)]), bone)
+			draw_line(c + Vector2(-5.0, 3.5), c + Vector2(5.0, 3.5), bone_dark, 1.2)
+			# Göz çukurları: derin oyuk + içinde kor kızıl parıltı.
+			draw_circle(c + Vector2(-3.8, -3.0), 2.9, Color("1c0806"))
+			draw_circle(c + Vector2(3.8, -3.0), 2.9, Color("1c0806"))
+			draw_circle(c + Vector2(-3.8, -2.6), 1.2, Color("c92a1e"))
+			draw_circle(c + Vector2(3.8, -2.6), 1.2, Color("c92a1e"))
+			# Burun: ters üçgen oyuk; dişler: üç ince çizgi.
+			draw_colored_polygon(PackedVector2Array([
+				c + Vector2(-1.6, 0.5), c + Vector2(1.6, 0.5), c + Vector2(0.0, 3.5)]), Color("1c0806"))
+			for tx: float in [-2.4, 0.0, 2.4]:
+				draw_line(c + Vector2(tx, 6.0), c + Vector2(tx, 10.0), bone_dark, 1.3)
 		_:
 			draw_circle(c, 9.0, col)
 
