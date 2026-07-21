@@ -39,6 +39,14 @@ const ROLE_TIERS := {
 	&"Beadcounter": 1, &"Skittish": 1, &"Tailor": 1, &"Mirrorwright": 1,
 }
 
+## Özel (bayrakla atanan) roller: rastgele köylü havuzuna girmez, Sarhoş bunları
+## sanamaz, Uğursuz/aktif rol ataması bunların üstüne yazamaz. V3 ziyaretçi
+## rolleri (Otacı/Gözcü/Seyyah) de burada — ziyaret çözümü net kalsın (§0.7).
+const SPECIAL_ROLES: Array[StringName] = [
+	&"Astrologer", &"Slayer", &"Hunter", &"Trapper",
+	&"Herbalist", &"Watcher", &"Wanderer", &"Hound",
+]
+
 
 ## config: { n, evil_count, demon_count, anchor_count, seed, max_attempts,
 ##           omen_type, outcast_count, drunk_count, slayer, hunter,
@@ -60,10 +68,22 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 	var night_rule: int = config.get("night_rule", Enums.NightRule.NEAREST)
 	var has_trapper: bool = config.get("trapper", false)     # Tuzakçı var mı
 	var jinxed_count: int = config.get("jinxed_count", 0)    # Uğursuz sayısı
+	# V3 Gece Trafiği rolleri (bkz. §0.7) — köy bazında bayrakla açılır.
+	var has_herbalist: bool = config.get("herbalist", false) # Otacı var mı
+	var has_watcher: bool = config.get("watcher", false)     # Gözcü var mı
+	var has_wanderer: bool = config.get("wanderer", false)   # Seyyah var mı
+	var has_hound: bool = config.get("hound", false)         # Tazı var mı (V3.1)
+	var has_prowler: bool = config.get("prowler", false)     # Sinsi Kurt kuralı (V3.1)
+	var alternating: bool = config.get("alternating", false) # Dönek Alfa (V3.1)
 	var role_tier: int = config.get("role_tier", 99)         # rol açılım kademesi (çile)
 	var cull_damage: int = config.get("cull_damage", 5)      # Kuraklık: 7
-	var modifiers: Array = config.get("modifiers", [])       # köy kuralları (İLAN edilir)
+	var modifiers: Array = (config.get("modifiers", []) as Array).duplicate()  # köy kuralları (İLAN edilir)
 	var role_pool: Array = config.get("role_pool", [])       # sefer destesi (draft; boş = tüm havuz)
+	# İLAN edilen köy kuralları: Sinsi ve Dönek modifier olarak duyurulur (§7.3).
+	if has_prowler and not modifiers.has("prowler"):
+		modifiers.append("prowler")
+	if alternating and not modifiers.has("moody"):
+		modifiers.append("moody")
 
 	for attempt in range(max_attempts):
 		# Uzun süre çözülemezse anchor sayısını kademeli artır (simetriyi kır, §5.7).
@@ -71,9 +91,15 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 		if attempt > max_attempts / 2:
 			anchor_count = base_anchors + 1
 
-		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, has_trapper, jinxed_count, role_tier, role_pool, rng)
+		var visitor_flags := {"herbalist": has_herbalist, "watcher": has_watcher,
+			"wanderer": has_wanderer, "hound": has_hound}
+		var state := _try_generate(n, evil_count, demon_count, anchor_count, omen_type, outcast_count, drunk_count, has_slayer, has_hunter, has_trapper, jinxed_count, role_tier, role_pool, visitor_flags, rng)
+		# Seed'i BOT simülasyonundan önce yaz: Gözcü'nün sahte şafak raporları
+		# seed+gün+seat'ten türetilir — bot ile gerçek oyun birebir aynı raporu üretir.
+		state.seed = config.get("seed", 0)
 		state.q_per_day = q_per_day
 		state.night_rule = night_rule  # bot gece simülasyonu da bu kuralla oynar
+		state.alternating_rule = alternating
 		state.questions_left = q_per_day
 		state.max_days = max_days
 		state.kills_per_night = kills_per_night
@@ -98,7 +124,6 @@ static func generate(config: Dictionary, rng: RandomNumberGenerator) -> VillageS
 			determined = false
 
 		if determined:
-			state.seed = config.get("seed", 0)
 			# Omen GİZLİ başlar: oyuncu Müneccim'i sorgulayınca öğrenir.
 			# (Teklik kontrolü yukarıda omen-bilinir varsayımıyla yapıldı.)
 			state.known_omen = Enums.OmenType.NONE
@@ -117,8 +142,12 @@ static func _budget_solvable(state: VillageState) -> bool:
 		c.given = 0
 	sim.night_events = []
 	sim.known_omen = Enums.OmenType.NONE
+	sim.last_questioned = -1
 	var d := 1
 	while d <= sim.max_days:
+		# Gün sayacı gerçek akışla birebir ilerlesin: gün damgalı şafak raporları
+		# (Gözcü/Tazı) ve Dönek Alfa kuralı state.day'den okur.
+		sim.day = d
 		# GÜNDÜZ: q sorgu — canlı + ifadesi kalanlardan en az sorgulanmış (küçük seat).
 		for q in range(sim.q_per_day):
 			var pick := -1
@@ -131,14 +160,17 @@ static func _budget_solvable(state: VillageState) -> bool:
 				break
 			var ch := sim.get_character(pick)
 			ch.given += 1
+			sim.last_questioned = pick  # V3: günün son sorgusu = Otacı hedefi
 			if ch.role == &"Astrologer" and sim.omen_type != Enums.OmenType.NONE:
 				sim.known_omen = sim.omen_type
 		if DeductionSolver.is_determined(sim.visible_for_solver()):
 			return true  # gün içinde teklik → aynı gün ayıklar, gece hiç olmaz
-		# GECE
+		# GECE (gerçek akışla birebir: -3 = şifa, av hakkı harcandı ama gece sürer)
 		for k in range(sim.kills_per_night):
-			if NightEngine.apply(sim) < 0:
+			if NightEngine.apply(sim) == -1:
 				break
+		NightEngine.dawn_reports(sim)  # Gözcü raporları (deterministik — §0.7)
+		sim.last_questioned = -1
 		if sim.alive_good_count() <= sim.alive_evil_count():
 			return false  # sürü düştü
 		if DeductionSolver.is_determined(sim.visible_for_solver()):
@@ -147,7 +179,7 @@ static func _budget_solvable(state: VillageState) -> bool:
 	return false
 
 
-static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, has_trapper: bool, jinxed_count: int, role_tier: int, role_pool: Array, rng: RandomNumberGenerator) -> VillageState:
+static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_count: int, omen_type: int, outcast_count: int, drunk_count: int, has_slayer: bool, has_hunter: bool, has_trapper: bool, jinxed_count: int, role_tier: int, role_pool: Array, visitor_flags: Dictionary, rng: RandomNumberGenerator) -> VillageState:
 	var state := VillageState.new()
 	state.n = n
 	state.evil_count = evil_count
@@ -204,6 +236,12 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 	# generate() dönmeden known_omen=NONE yapılır (oyuncu Müneccim'den öğrenir).
 	state.known_omen = effective_omen
 
+	# Kurt bluff havuzu: köylü rolleri + (açıksa) V3 ziyaretçi rolleri — kurt Otacı/
+	# Gözcü/Seyyah kılığına girebilir; gece davranışı (ya da yalan raporu) onu ele verir.
+	var bluff_pool := pool_all.duplicate()
+	for vf: StringName in [&"Herbalist", &"Watcher", &"Wanderer", &"Hound"]:
+		if visitor_flags.get(String(vf).to_lower(), false):
+			bluff_pool.append(vf)
 	for idx in range(evil_seats.size()):
 		var s: int = evil_seats[idx]
 		chars[s].alignment = Enums.Alignment.EVIL
@@ -213,7 +251,7 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		else:
 			chars[s].category = Enums.Category.MINION
 			chars[s].role = &"Minion"
-		chars[s].bluff_role = pool_all[rng.randi() % pool_all.size()]
+		chars[s].bluff_role = bluff_pool[rng.randi() % bluff_pool.size()]
 
 	# İyi köylülere MÜMKÜN OLDUĞUNCA BENZERSIZ rol ver (tekrarlı tanıklık olmasın).
 	var assign_pool := _sample(pool_all, pool_all.size(), rng)
@@ -267,6 +305,15 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		_assign_active_role(chars, n, &"Hunter", rng)
 	if has_trapper:
 		_assign_active_role(chars, n, &"Trapper", rng)
+	# V3 ziyaretçi rolleri (bkz. §0.7) — gece kuralları İLAN edilir.
+	if visitor_flags.get("herbalist", false):
+		_assign_active_role(chars, n, &"Herbalist", rng)
+	if visitor_flags.get("watcher", false):
+		_assign_active_role(chars, n, &"Watcher", rng)
+	if visitor_flags.get("wanderer", false):
+		_assign_active_role(chars, n, &"Wanderer", rng)
+	if visitor_flags.get("hound", false):
+		_assign_active_role(chars, n, &"Hound", rng)
 
 	# Uğursuz (Jinxed): İYİ ve DOĞRU söyler ama sorgulayanın sürüsünden 1 can alır.
 	# Açıkça görünür (kart "Uğursuz" der) — risk/ödül İLAN edilir (adalet §7.3).
@@ -275,8 +322,7 @@ static func _try_generate(n: int, evil_count: int, demon_count: int, anchor_coun
 		for i in range(n):
 			if chars[i].alignment == Enums.Alignment.GOOD \
 					and chars[i].category == Enums.Category.VILLAGER \
-					and chars[i].role != &"Astrologer" and chars[i].role != &"Slayer" \
-					and chars[i].role != &"Hunter" and chars[i].role != &"Trapper":
+					and not SPECIAL_ROLES.has(chars[i].role):
 				jpool.append(i)
 		var chosen_j := _sample(jpool, min(jinxed_count, jpool.size()), rng)
 		for ji in chosen_j:
@@ -371,6 +417,43 @@ static func _build_claims(c: Character, world: Dictionary, n: int, rng: RandomNu
 			var sobs := _true_obs(i, world, n, rng)
 			sobs.text = TestimonyText.phrase(&"Judge", sobs, rng)
 			out.append(sobs)
+		&"Herbalist", &"Wanderer":
+			# V3 ziyaretçi rolleri: 1. ifade GECE KURALININ İLANI (adalet §7.3 —
+			# ziyaret kuralı herkese açık), 2. ifade doğru bir gözlem.
+			# (Gözcü'nün ilanı da burada; raporları şafakta bedava düşer.)
+			var vt := TestimonyClaim.new()
+			vt.type = Enums.TestimonyType.SELF_ANCHOR
+			vt.speaker = i
+			if c.role == &"Herbalist":
+				vt.text = ("Every night I carry my herbs to whoever was QUESTIONED LAST that day. If the wolf comes to that door, my patient lives." if Loc.lang == "en"
+					else "Her gece, o gün EN SON SORGULANANIN evine ot taşırım. Kurt o kapıya dadanırsa hastam ölmez.")
+			else:
+				vt.text = ("I never sleep at home — each night I guest at the nearest living neighbor clockwise." if Loc.lang == "en"
+					else "Evimde uyuduğum görülmemiştir — her gece saat yönündeki en yakın canlı komşuya misafir olurum.")
+			out.append(vt)
+			var vobs := _true_obs(i, world, n, rng)
+			vobs.text = TestimonyText.phrase(&"Judge", vobs, rng)
+			out.append(vobs)
+		&"Watcher":
+			var wt := TestimonyClaim.new()
+			wt.type = Enums.TestimonyType.SELF_ANCHOR
+			wt.speaker = i
+			wt.text = ("I watch my neighbors' doors all night — every dawn I'll tell you how many visitors they had. No question needed." if Loc.lang == "en"
+				else "Gece boyu kapı komşularımın eşiğini gözlerim — her şafak kaç ziyaretçi aldıklarını söylerim. Sorgu istemez, sözüm hediye.")
+			out.append(wt)
+			var wobs := _true_obs(i, world, n, rng)
+			wobs.text = TestimonyText.phrase(&"Judge", wobs, rng)
+			out.append(wobs)
+		&"Hound":
+			var ht := TestimonyClaim.new()
+			ht.type = Enums.TestimonyType.SELF_ANCHOR
+			ht.speaker = i
+			ht.text = ("My nose never lies — each dawn I'll tell you which way the killer came from. No question needed." if Loc.lang == "en"
+				else "Burnum yanılmaz — her şafak, katilin kurbana HANGİ YÖNDEN geldiğini söylerim. Sorgu istemez.")
+			out.append(ht)
+			var hobs := _true_obs(i, world, n, rng)
+			hobs.text = TestimonyText.phrase(&"Judge", hobs, rng)
+			out.append(hobs)
 		_:
 			if c.category == Enums.Category.OUTCAST:
 				# Sarhoş: sandığı rolün tipinde ama her ifade bağımsız %50 yanlış.
@@ -718,13 +801,14 @@ static func _other_compare(true_cmp: int, allow_equal: bool, rng: RandomNumberGe
 
 # --- yardımcılar ---
 
-## Aktif yetenekli rolü (Slayer/Hunter) bir düz köylüye ata (Astrologer/başka aktif değil).
+## Özel rolü (aktif yetenekli ya da V3 ziyaretçi) bir düz köylüye ata — başka bir
+## özel rolün üstüne yazmaz (SPECIAL_ROLES tek doğruluk kaynağı).
 static func _assign_active_role(chars: Array, n: int, role: StringName, rng: RandomNumberGenerator) -> void:
 	var pool: Array = []
 	for i in range(n):
 		var c: Character = chars[i]
 		if c.alignment == Enums.Alignment.GOOD and c.category == Enums.Category.VILLAGER \
-				and c.role != &"Astrologer" and c.role != &"Slayer" and c.role != &"Hunter":
+				and not SPECIAL_ROLES.has(c.role):
 			pool.append(i)
 	if not pool.is_empty():
 		chars[pool[rng.randi() % pool.size()]].role = role

@@ -26,6 +26,8 @@ enum TestimonyType {
 	NEAREST_EVIL_MIN_DIST,  ## "En yakın kurt bana K'dan UZAK/YAKIN" (eşitsizlik)
 	WOLF_GAP,               ## "En yakın iki kurdun arası tam K adım" (kurtlar-arası yapı)
 	OPPOSITE_ALIGNMENT,     ## "Tam karşımdaki koltuk kurt/temiz" (yalnız çift n)
+	VISITOR_COUNT,          ## V3: "Dün gece komşularıma toplam N ziyaret oldu" (Gözcü şafak raporu)
+	ATTACKER_DIRECTION,     ## V3.1: "Kurt kurbana şu yönden geldi" (Tazı şafak raporu)
 }
 
 ## En yakın Evil'e yön. Seat index saat yönünde artar.

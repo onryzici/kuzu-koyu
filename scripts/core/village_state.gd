@@ -30,6 +30,9 @@ extends Resource
 @export var modifiers: Array = []            ## köy kuralları ("silent"...) — İLAN edilir (§7.3)
 @export var trap_seat: int = -1              ## Tuzakçı kapanı (bu gece; -1 = yok)
 @export var night_events: Array = []         ## [{alive: Array[int], victim: int, day: int}]
+@export var last_questioned: int = -1        ## V3: bugün EN SON sorgulanan (Otacı hedefi; şafakta -1)
+@export var alternating_rule: bool = false   ## V3.1: Dönek Alfa — kural gece gece değişir (İLAN)
+@export var confronted: Dictionary = {}      ## V3.1: yapılan yüzleştirmeler ("a:b" -> true)
 
 
 ## Ground truth: gerçek alignment + rol. Generator doğrulaması ve testler için.

@@ -22,21 +22,21 @@ const COIN_MINIBOSS_BONUS := 25
 const MAP_SPECS := [
 	# --- PERDE 1: YAYLA ---
 	{"t": "village", "act": 1, "n": 5, "evil_count": 1, "demon_count": 1, "anchor_count": 1, "q_per_day": 3, "max_days": 4},
-	{"t": "village", "act": 1, "n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "outcast_count": 1, "hunter": true, "q_per_day": 3, "max_days": 5},
+	{"t": "village", "act": 1, "n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "outcast_count": 1, "hunter": true, "herbalist": true, "q_per_day": 3, "max_days": 5},
 	{"t": "event", "act": 1},
 	{"t": "elite", "act": 1, "n": 8, "evil_count": 2, "demon_count": 1, "anchor_count": 1, "omen_type": Enums.OmenType.PARITY, "jinxed_count": 1, "cull_damage": 7, "modifiers": ["drought"], "q_per_day": 3, "max_days": 5},
 	{"t": "miniboss", "act": 1, "boss_name": "miniboss_howl", "n": 8, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "slayer": true, "q_per_day": 3, "max_days": 5},
 	{"t": "shop", "act": 1},
 	# --- PERDE 2: VADİ ---
-	{"t": "village", "act": 2, "n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "drunk_count": 1, "trapper": true, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 3, "max_days": 5},
-	{"t": "village", "act": 2, "n": 9, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.CONTIGUOUS_ARC, "drunk_count": 1, "kills_per_night": 2, "q_per_day": 4, "max_days": 5, "modifiers": ["blood_moon"]},
+	{"t": "village", "act": 2, "n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "drunk_count": 1, "trapper": true, "herbalist": true, "watcher": true, "night_rule": Enums.NightRule.FARTHEST, "q_per_day": 3, "max_days": 5},
+	{"t": "village", "act": 2, "n": 9, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.CONTIGUOUS_ARC, "drunk_count": 1, "kills_per_night": 2, "watcher": true, "wanderer": true, "hound": true, "q_per_day": 4, "max_days": 5, "modifiers": ["blood_moon"]},
 	{"t": "event", "act": 2},
 	{"t": "elite", "act": 2, "n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.MIRROR, "jinxed_count": 1, "modifiers": ["silent"], "q_per_day": 4, "max_days": 6},
 	{"t": "miniboss", "act": 2, "boss_name": "miniboss_shadow", "n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "night_rule": Enums.NightRule.FARTHEST, "hunter": true, "q_per_day": 4, "max_days": 5},
 	{"t": "shop", "act": 2},
 	# --- PERDE 3: KARA ORMAN ---
-	{"t": "village", "act": 3, "n": 11, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.SAME_SIDE, "drunk_count": 1, "slayer": true, "q_per_day": 4, "max_days": 6},
-	{"t": "village", "act": 3, "n": 12, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "trapper": true, "kills_per_night": 2, "q_per_day": 4, "max_days": 6, "modifiers": ["blood_moon"]},
+	{"t": "village", "act": 3, "n": 11, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.SAME_SIDE, "drunk_count": 1, "slayer": true, "herbalist": true, "watcher": true, "wanderer": true, "prowler": true, "q_per_day": 4, "max_days": 6},
+	{"t": "village", "act": 3, "n": 12, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "omen_type": Enums.OmenType.DISPERSED, "trapper": true, "kills_per_night": 2, "herbalist": true, "watcher": true, "hound": true, "q_per_day": 4, "max_days": 6, "modifiers": ["blood_moon"]},
 	{"t": "event", "act": 3},
 	{"t": "shop", "act": 3},  # finalden önce son hazırlık (para burada da erisin)
 	{"t": "boss", "act": 3},
@@ -55,6 +55,9 @@ const BOSS_SPECS := [
 	# Sabırsız Alfa: 2 av + kısılmış sorgu; karşılığında +1 şafak.
 	{"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "boss": true,
 		"boss_name": "boss_impatient", "drunk_count": 1, "kills_per_night": 2, "q_per_day": 3, "max_days": 6},
+	# Dönek Alfa (V3.1): av kuralı gece gece değişir (tek NEAREST / çift FARTHEST).
+	{"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2, "boss": true,
+		"boss_name": "boss_moody", "drunk_count": 1, "alternating": true, "hound": true, "q_per_day": 4, "max_days": 6},
 ]
 
 ## SEFER DESTESİ (rol draft'ı): sefer bu çekirdek havuzla başlar; her köy zaferi
@@ -307,6 +310,20 @@ func _endless_node(k: int) -> Dictionary:
 	var omen_cycle := [Enums.OmenType.PARITY, Enums.OmenType.DISPERSED,
 		Enums.OmenType.CONTIGUOUS_ARC, Enums.OmenType.SAME_SIDE]
 	spec["omen_type"] = omen_cycle[k % omen_cycle.size()]
+	# V3 Gece Trafiği dönüşümlü girer (her köyde hepsi olmasın — çeşitlilik).
+	if k % 2 == 0:
+		spec["herbalist"] = true
+	if k % 3 != 2:
+		spec["watcher"] = true
+	if k % 4 == 1:
+		spec["wanderer"] = true
+	if k % 4 == 3:
+		spec["hound"] = true
+	# Sinsi ancak Gözcü varken anlamlı (izi sayımlarda görünür).
+	if k % 6 == 0 and spec.has("watcher"):
+		spec["prowler"] = true
+	if k % 5 == 4:
+		spec["alternating"] = true
 	match k % 3:
 		1:
 			spec["kills_per_night"] = 2

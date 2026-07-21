@@ -70,6 +70,72 @@ Spread motoru kodda durur ama akışta kullanılmaz (ileride boss varyantı olab
 
 ---
 
+## 0.7 ⚡ V3 KATMANI — "GECE TRAFİĞİ" (2026-07-21)
+
+> §0.5'in ÜSTÜNE eklenen opsiyonel katman (config bayraklarıyla köy bazında açılır).
+> İlham: Feign'in gece ziyaretleri. Bazı karakterler gece başka evlere gider; ziyaret
+> kuralları BİLİNEN ve DETERMİNİSTİKTİR (adalet §7.3 — Av Düzeni gibi İLAN edilir).
+> Böylece gece hareketliliği, cesetler gibi YALAN SÖYLEMEYEN ikinci bir kanıt kanalıdır.
+
+### Ziyaret modeli (bağımsızlık ilkesi)
+Gece TEK anlık görüntüden (akşam çöktüğü andaki durum) çözülür; kimsenin kararı bir
+başkasının O geceki kararına bakmaz. Faz sırası sabittir:
+1. Herkes hedefini akşam durumundan hesaplar (aşağıdaki kurallar).
+2. Kurt avlanır (`pick_victim` — aynen). Saldıran kurt, kurbanın evini ZİYARET etmiş sayılır.
+3. TUZAK > ŞİFA önceliği: av kapana denk geldiyse tuzak çalışır; değilse Otacı'nın
+   hedefi kurbanla aynıysa kurban KURTULUR (sessiz şafak, ceset yok).
+4. Gözcüler sayım yapar; şafakta raporlar düşer.
+
+### Yeni roller
+| Rol (id) | Gece kuralı (İLAN edilir) | Kanıt değeri |
+|---|---|---|
+| Otacı (`Herbalist`) | O gün EN SON SORGULANAN canlı karaktere şifa taşır (kimse yoksa / kendisiyse evde kalır). | Sessiz şafak = "Otacı kurbanın evindeydi" → hem Otacı'nın gerçekliği hem kurt konumu kısıtı. Sorgu SIRASI oyuncunun gece aracına dönüşür (son sorguyla Otacı'yı yönlendir). |
+| Gözcü (`Watcher`) | Her şafak, sorgu harcamadan, İKİ kapı komşusunun o gece aldığı TOPLAM ziyaret sayısını raporlar (`VISITOR_COUNT` claim; gün damgalı). | Gerçek Gözcü doğru sayar; kurt-Gözcü raporu YALAN olmak zorunda → her şafak kendini biraz daha ele verir. |
+| Seyyah (`Wanderer`) | Her gece saat yönündeki en yakın CANLI karaktere misafir olur. | Gürültü kanalı: sayımları zenginleştirir. Kurt-Seyyah gece evde kalır (kurt avlanır) → sayım açığı onu ele verir. |
+
+### Motor kuralları
+- Ziyaretçi kümesi (aday dünya W'de): saldıran kurt(lar) + W'de İYİ olan iddialı
+  Otacılar + W'de İYİ olan iddialı Seyyahlar. `NightEngine.visitors_by_house` TEK
+  doğruluk kaynağı: gerçek gece, Gözcü raporu üretimi ve solver değerlendirmesi
+  ÜÇÜ de bunu kullanır (§18).
+- Gece olayı kaydı YALNIZ kamusal girdiler taşır: alive, last_q (o günün son
+  sorgusu), iddialı Otacı/Seyyah seat'leri (shown_role kamusaldır), kurban (-1 =
+  sessiz), tuzak alanları. Kurtarılan kurbanın KİM olduğu kaydedilmez (sızıntı olmaz).
+- `consistent_with_nights` genişler: W'ye göre beklenen sonuç (kurban / tuzak /
+  şifa-kurtuluşu) kayıtla birebir örtüşmeli. Sessiz şafak ⇔ W'de iyi bir iddialı
+  Otacı'nın hedefi beklenen kurbandı.
+- Gözcü raporu `TestimonyType.VISITOR_COUNT` claim'idir (day alanıyla): solver'da
+  iyi konuşan → doğru, kurt → yanlış (mevcut simetri). Sahte rapor sayısı kamusal
+  aralıktan seçilir (inandırıcılık kuralı) ve seed+gün+seat'ten deterministiktir.
+- Sarhoş, ziyaretçi rolleri İDDİA EDEMEZ (Otacı/Gözcü/Seyyah sanamaz) — ziyaret
+  çözümü net kalır. Kurtlar bu rolleri bluff'layabilir (bluff havuzuna girerler).
+- Bütçe botu gerçek akışı birebir simüle eder: last_q'yu işler, şafak raporlarını
+  üretir — üretici garantisi (§0.5) bu katmanla birlikte doğrulanır.
+
+### V3.1 genişlemesi (2026-07-21, ikinci dalga)
+- **Tazı (`Hound`, iyi):** şafakta bedava rapor — saldıran kurdun kurbana HANGİ
+  YÖNDEN geldiğini söyler (`ATTACKER_DIRECTION` claim; kurban+gün damgalı).
+  Ceset konumu + yön = nirengi. Sahte Tazı yön uydurmak zorunda (yalan simetrisi).
+- **Sinsi Kurt (`prowler` köy kuralı, İLAN edilir):** sürü davranışı — en küçük
+  seat'li CANLI kurt her gece EN ÇOK SORGULANAN canlıya sürtünür (öldürmez, iz
+  bırakır). Gözcü sayımlarını gerçek bulmacaya çevirir; kimlik değil hizalama
+  bazlı olduğu için solver aday dünyadan hesaplayabilir.
+- **Dönek Alfa (`alternating_rule`, İLAN edilir):** av kuralı gece gece değişir —
+  TEK günler NEAREST, ÇİFT günler FARTHEST. Olay kaydı geceye işlenen kuralı taşır;
+  solver otomatik uyar. Boss varyantı `boss_moody`.
+- **Yüzleştirme (`GameState.confront`):** 2 sorgu hakkına, seçilen karakter
+  SEÇİLEN HEDEF hakkında konuşur (dinamik `ALIGNMENT_OF`; iyi→doğru, kurt→ters,
+  Sarhoş→seed'li %50). Çift başına 1 kez. Bütçe botu KULLANMAZ — adalet garantisi
+  yüzleştirmesiz sağlanır, yüzleştirme saf oyuncu avantajıdır. UI: Y + hedef tık.
+- **Hipotez modu (UI, board):** H ile bir kart "farz et kurt" işaretlenir; solver
+  dünyaları bu varsayımla süzülür, kesinleşen koltuklar kart çevresinde renkli
+  halkayla gösterilir (kızıl=kesin kurt, yeşil=kesin koyun). Varsayım hiçbir
+  dünyada tutmuyorsa "imkânsız" ilan edilir (bu da kanıttır). Motor değişmez.
+- **Vakalar (el yapımı seed'li senaryolar):** harita ekranından seçilen, isimli,
+  sabit seed+config bağımsız köyler (`GameState.case_config`). Testler üretilebilirliği doğrular.
+
+---
+
 ## 1. Vizyon ve Farklılaşma
 
 ### 1.1 Referans: Demon Bluff (ne alıyoruz)

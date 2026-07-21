@@ -34,6 +34,10 @@ const TR := {
 	&"Tailor": "Terzi",         # en yakın iki kurdun arası (yerleşim kısıtı)
 	&"Mirrorwright": "Aynacı",  # tam karşı koltuğun safı (yalnız çift n)
 	&"Trapper": "Tuzakçı",     # aktif: bir koltuğa gecelik kapan kurar
+	&"Herbalist": "Otacı",     # V3: gece son sorgulanana şifa taşır (av oradaysa kurtarır)
+	&"Watcher": "Gözcü",       # V3: şafakta komşularının ziyaret sayısını raporlar
+	&"Wanderer": "Seyyah",     # V3: gece saat yönündeki en yakın canlıya misafir olur
+	&"Hound": "Tazı",          # V3.1: şafakta katilin geliş yönünü koklar
 	&"Astrologer": "Müneccim", # Gizli Kural'ı (Omen) ifşa eder
 	&"Slayer": "Kılıççı",      # aktif: bir karta kılıç saplar (İblis'i öldürür)
 	&"Hunter": "Avcı",         # aktif: bir kurdu vurur (koyunu vurursan -3 can)
@@ -75,6 +79,10 @@ const ABILITY := {
 	&"Tailor": "Kurtların arasını arşınlar: en yakın iki kurdun çemberde tam kaç adım olduğunu bilir.",
 	&"Mirrorwright": "Aynasında yalnız TAM KARŞISINDAKİ koltuğu görür: kurt mu, koyun mu.",
 	&"Trapper": "AKTİF (tek kullanım): bir koltuğa gecelik KAPAN kurar. Av o koltuğa düşerse kurban ölmez; saldıran kurt yakalanıp yüzü açılır.",
+	&"Herbalist": "GECE: o gün EN SON SORGULANAN kişinin evine şifa taşır. Kurt o eve saldırırsa kurban ÖLMEZ (sessiz şafak). Son sorgunu kime yaptığın artık bir silah.",
+	&"Watcher": "ŞAFAK (bedava): iki kapı komşusunun o gece aldığı TOPLAM ziyaret sayısını söyler. Gerçek Gözcü doğru sayar; sahtesi yalan söylemek zorunda.",
+	&"Wanderer": "GECE: saat yönündeki en yakın CANLI komşuya misafir olur. Gözcü sayımlarına iz bırakır — evde kalan 'Seyyah' kurttur.",
+	&"Hound": "ŞAFAK (bedava): katilin kurbana HANGİ YÖNDEN geldiğini koklar. Ceset + yön = nirengi. Sahte Tazı yön uydurmak zorunda.",
 	&"Jinxed": "İYİdir ve hep DOĞRU söyler — ama nazarlıdır: onu her sorgulayışında sürü 1 can kaybeder. Bilgi mi, can mı?",
 	&"Astrologer": "Yıldızlara bakar; kurtların Gizli Kural'ını (desenini) açıklar.",
 	&"Slayer": "AKTİF (tek kullanım): bir karta kılıç saplar. Alfa Kurt ise ölür, değilse boşa gider.",
@@ -114,6 +122,10 @@ const EN := {
 	&"Tailor": "Tailor",
 	&"Mirrorwright": "Mirrorwright",
 	&"Trapper": "Trapper",
+	&"Herbalist": "Herbalist",
+	&"Watcher": "Watcher",
+	&"Wanderer": "Wayfarer",
+	&"Hound": "Hound",
 	&"Astrologer": "Stargazer",
 	&"Slayer": "Swordsman",
 	&"Hunter": "Hunter",
@@ -154,6 +166,10 @@ const ABILITY_EN := {
 	&"Tailor": "Paces out the wolves' gap: knows exactly how many steps apart the two nearest wolves sit on the circle.",
 	&"Mirrorwright": "His mirror shows only the seat DIRECTLY OPPOSITE: wolf or sheep.",
 	&"Trapper": "ACTIVE (one use): sets a TRAP on a seat for the night. If the hunt lands there, the victim lives; the attacking wolf is caught and unmasked.",
+	&"Herbalist": "NIGHT: carries herbs to the house of whoever was QUESTIONED LAST that day. If the wolf strikes that house, the victim LIVES (quiet dawn). Your last question is now a weapon.",
+	&"Watcher": "DAWN (free): reports the TOTAL number of visits their two door-neighbors received that night. A real Watcher counts true; a fake one must lie.",
+	&"Wanderer": "NIGHT: guests at the nearest LIVING neighbor clockwise. Leaves a trace in the Watcher's counts — a 'Wayfarer' who stays home is a wolf.",
+	&"Hound": "DAWN (free): sniffs out which DIRECTION the killer approached the victim from. Corpse + direction = triangulation. A fake Hound must invent a direction.",
 	&"Jinxed": "GOOD and always TRUTHFUL — but hexed: every time you question them, the flock loses 1 heart. Knowledge or blood?",
 	&"Astrologer": "Reads the stars; reveals the wolves' Hidden Rule (their pattern).",
 	&"Slayer": "ACTIVE (one use): drives a sword into a card. If it's the Alpha Wolf, it dies; otherwise the blow is wasted.",

@@ -38,6 +38,8 @@ const VOICE := {
 	&"Skittish": "T-titriyorum ama biliyorum: ",
 	&"Tailor": "Arşınımla ölçtüm: ",
 	&"Mirrorwright": "Aynam yansıttı: ",
+	&"Watcher": "Bütün gece eşikleri gözledim: ",
+	&"Hound": "Burnum iz sürdü: ",
 }
 
 # İngilizce açılış lakapları (VOICE'un birebir karşılığı; boşsa atlanır).
@@ -67,6 +69,8 @@ const VOICE_EN := {
 	&"Skittish": "I-I'm trembling, but I know: ",
 	&"Tailor": "I measured it with my yardstick: ",
 	&"Mirrorwright": "My mirror showed me: ",
+	&"Watcher": "I watched the doorsteps all night: ",
+	&"Hound": "My nose followed the trail: ",
 }
 
 
@@ -240,6 +244,29 @@ static func _body(role: StringName, t: TestimonyClaim, rng: RandomNumberGenerato
 				"karşımdaki #%d'nin yansıması dupduru: koyun." % osx,
 			])
 
+		Enums.TestimonyType.VISITOR_COUNT:
+			var va: int = t.targets[0]
+			var vb: int = t.targets[1]
+			if t.number == 0:
+				return _pick(rng, [
+					"dün gece kapı komşularımın (#%d, #%d) eşiğine KİMSE uğramadı." % [va, vb],
+					"#%d ve #%d'nin kapısı dün gece hiç açılmadı — tek ziyaretçi yok." % [va, vb],
+				])
+			return _pick(rng, [
+				"dün gece kapı komşularıma (#%d, #%d) toplam %d ziyaret oldu." % [va, vb, t.number],
+				"#%d ve #%d'nin eşiğinden dün gece %d gölge geçti — saydım." % [va, vb, t.number],
+			])
+
+		Enums.TestimonyType.ATTACKER_DIRECTION:
+			var hv: int = t.targets[0]
+			if t.direction == Enums.Direction.EQUIDISTANT:
+				return "katilin izi #%d'nin kapısında iki yönden de aynı — tam karşıdan gelmiş." % hv
+			var hd := "saat yönünden" if t.direction == Enums.Direction.CLOCKWISE else "saat yönünün tersinden"
+			return _pick(rng, [
+				"katil #%d'nin kapısına %s gelmiş — izler öyle diyor." % [hv, hd],
+				"#%d'yi vuran kurt %s sokulmuş, kokusu o yönde." % [hv, hd],
+			])
+
 		_:
 			return "Söyleyecek bir şeyim yok."
 
@@ -403,6 +430,29 @@ static func _body_en(role: StringName, t: TestimonyClaim, rng: RandomNumberGener
 			return _pick(rng, [
 				"#%d, straight across from me, is clean — mirrors don't lie." % osx,
 				"the reflection of #%d across from me runs clear: a sheep." % osx,
+			])
+
+		Enums.TestimonyType.VISITOR_COUNT:
+			var va: int = t.targets[0]
+			var vb: int = t.targets[1]
+			if t.number == 0:
+				return _pick(rng, [
+					"NOBODY came to my door-neighbors (#%d, #%d) last night." % [va, vb],
+					"the doors of #%d and #%d never opened last night — not one visitor." % [va, vb],
+				])
+			return _pick(rng, [
+				"my door-neighbors (#%d, #%d) had %d visits in total last night." % [va, vb, t.number],
+				"%d shadows crossed the doorsteps of #%d and #%d last night — I counted." % [t.number, va, vb],
+			])
+
+		Enums.TestimonyType.ATTACKER_DIRECTION:
+			var hv: int = t.targets[0]
+			if t.direction == Enums.Direction.EQUIDISTANT:
+				return "the killer's trail at #%d's door reads the same both ways — it came from straight across." % hv
+			var hd := "clockwise" if t.direction == Enums.Direction.CLOCKWISE else "counter-clockwise"
+			return _pick(rng, [
+				"the killer came at #%d's door from the %s side — the tracks say so." % [hv, hd],
+				"the wolf that struck #%d crept in %s; the scent lies that way." % [hv, hd],
 			])
 
 		_:

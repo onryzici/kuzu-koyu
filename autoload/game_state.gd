@@ -11,6 +11,7 @@ var village: VillageState = null
 var health: int = MAX_HEALTH
 var score: int = 0
 var phase: int = Enums.GamePhase.SETUP
+var case_config: Dictionary = {}  ## V3.1 VAKA modu: seçili senaryonun config'i (boş = normal)
 var _shield_used := false     ## Kalkan muskası: köy başına 1 hasarsız yanlış
 var _night_grace := false     ## Pusula muskası: ilk gece av olmaz
 var _q_bought := 0            ## bu köyde parayla alınan sorgu sayısı (fiyat tırmanır)
@@ -60,6 +61,7 @@ func start_village(state: VillageState) -> void:
 	_q_bought = 0
 	village.day = 1
 	village.questions_left = village.q_per_day
+	village.last_questioned = -1
 	# Muska etkileri (dükkândan, §4). Yalnız aktif seferde.
 	if RunManager.has_active_run():
 		# Kâhin Boncuğu: Gizli Kural baştan bilinir (Müneccim beklemeden).
@@ -136,6 +138,8 @@ func question(seat: int) -> bool:
 	c.testimony = c.claims[c.given - 1]
 	c.claim_days.append(village.day)  # İfade Defteri: hangi gün söylendi
 	village.questions_left -= 1
+	# V3: günün son sorgusu Otacı'nın gece hedefidir (sorgu SIRASI taktik araç — §0.7).
+	village.last_questioned = seat
 	# Müneccim ilk sorguda Gizli Kural'ı (Omen) ifşa eder → solver + HUD rozeti.
 	if c.role == &"Astrologer" and village.omen_type != Enums.OmenType.NONE and village.known_omen == Enums.OmenType.NONE:
 		village.known_omen = village.omen_type
@@ -143,6 +147,59 @@ func question(seat: int) -> bool:
 	EventBus.character_questioned.emit(seat)
 	# Uğursuz: sorgulayanın sürüsünden 1 can alır (nazar) — İLAN edilen bedel.
 	if c.role == &"Jinxed":
+		health -= 1
+		EventBus.player_damaged.emit(1, health)
+		if health <= 0:
+			_end(false, Loc.t("lose_jinxed"))
+	return true
+
+
+## V3.1 YÜZLEŞTİRME: 2 sorgu hakkına, `asker` SEÇİLEN `target` hakkında konuşur.
+## Dinamik ALIGNMENT_OF: iyi→doğru, kurt→ters, Sarhoş→seed'li %50. Çift başına 1 kez.
+## Bütçe botu bunu KULLANMAZ — adalet garantisi yüzleştirmesiz sağlanır (§0.7 V3.1).
+const CONFRONT_COST := 2
+
+func confront(asker: int, target: int) -> bool:
+	if not is_active() or asker == target:
+		return false
+	if village.questions_left < CONFRONT_COST:
+		EventBus.question_denied.emit(asker, Loc.t("confront_no_q"))
+		return false
+	var a := village.get_character(asker)
+	var b := village.get_character(target)
+	if not a.is_alive() or not b.is_alive():
+		return false
+	var pair := "%d:%d" % [asker, target]
+	if village.confronted.has(pair):
+		EventBus.question_denied.emit(asker, Loc.t("confront_pair_used"))
+		return false
+	village.confronted[pair] = true
+	village.questions_left -= CONFRONT_COST
+	# Cevap: gerçeği hesapla, konuşana göre bük (§18 yalan üretim kuralı).
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(village.seed) * 999983 + village.day * 17 + asker * 131 + target * 7919
+	var truth: int = b.alignment
+	var said := truth
+	if a.is_evil():
+		said = Enums.Alignment.GOOD if truth == Enums.Alignment.EVIL else Enums.Alignment.EVIL
+	elif a.category == Enums.Category.OUTCAST and village.drunk_count > 0 and a.role != &"Saint" and a.role != &"Jinxed":
+		# Sarhoş adayı: %50 yanlış (seed'li — aynı çift hep aynı cevabı verir).
+		if rng.randf() < 0.5:
+			said = Enums.Alignment.GOOD if truth == Enums.Alignment.EVIL else Enums.Alignment.EVIL
+	var t := TestimonyClaim.new()
+	t.type = Enums.TestimonyType.ALIGNMENT_OF
+	t.speaker = asker
+	t.targets = [target]
+	t.alignment = said
+	t.text = TestimonyText.phrase(a.shown_role(), t, rng)
+	a.claims.insert(a.given, t)
+	a.given += 1
+	a.claim_days.append(village.day)
+	a.testimony = t
+	village.last_questioned = asker  # yüzleştirme de sorgudur — Otacı hedefi kayar
+	EventBus.character_questioned.emit(asker)
+	# Uğursuz bedeli yüzleştirmede de işler (onu konuşturuyorsun).
+	if a.role == &"Jinxed":
 		health -= 1
 		EventBus.player_damaged.emit(1, health)
 		if health <= 0:
@@ -173,9 +230,18 @@ func end_day(protected: int = -1) -> void:
 				var ev: Dictionary = village.night_events.back()
 				EventBus.trap_sprung.emit(int(ev["trapped"]), int(ev.get("caught", -1)))
 				continue
+			if v == -3:
+				# ŞİFA: Otacı kurbanın evindeydi — ölüm yok (sessiz şafak, §0.7).
+				EventBus.night_saved.emit()
+				continue
 			victims.append(v)
 			EventBus.night_kill.emit(v)
+		# V3: Gözcü şafak raporları (sorgu maliyetsiz; İfade Defteri'ne işlenir).
+		var reporters := NightEngine.dawn_reports(village)
+		if not reporters.is_empty():
+			EventBus.dawn_reports_given.emit(reporters)
 		EventBus.night_passed.emit(victims)
+	village.last_questioned = -1  # Otacı hedefi güne aittir — şafakta sıfırlanır
 
 	# Sürü düştü mü? (canlı iyi <= canlı kurt → kurtlar sürüyü ele geçirdi)
 	if village.alive_good_count() <= village.alive_evil_count():

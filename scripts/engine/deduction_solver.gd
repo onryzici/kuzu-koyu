@@ -68,7 +68,8 @@ static func solve(visible: Dictionary) -> Array:
 			if not NightEngine.consistent_with_nights(al, nights, n):
 				continue
 
-		var world := {"n": n, "alignment": al, "evil_seats": evil_set}
+		# nights: V3 VISITOR_COUNT claim'leri gece trafiğini W'ye göre yeniden hesaplar.
+		var world := {"n": n, "alignment": al, "evil_seats": evil_set, "nights": nights}
 
 		# İfade kontrolü. Sarhoş gevşetmesi KARAKTER bazlı: bir iyi karakterin
 		# HERHANGİ bir ifadesi yanlışsa o karakter sarhoş adayıdır; bu tür

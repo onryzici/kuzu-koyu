@@ -18,6 +18,8 @@ func _ready() -> void:
 	_test_testimony()
 	_test_solver()
 	_test_night_engine()
+	_test_night_traffic()
+	_test_night_traffic2()
 	_test_generator()
 	_test_lie_plausibility()
 	_test_budget()
@@ -372,6 +374,284 @@ func _test_night_engine() -> void:
 	GameState.question(3)
 	eq(GameState.health, hp0 - 1, "Uğursuz sorgusu -1 can")
 	GameState.village = null
+
+
+# -------------------------------------------------------------------
+## V3 GECE TRAFİĞİ (bkz. CLAUDE.md §0.7): Otacı şifası, Gözcü raporları, Seyyah,
+## ziyaret tutarlılığı ve üretici entegrasyonu.
+func _test_night_traffic() -> void:
+	_section_start("Gece Trafiği (Otacı/Gözcü/Seyyah)")
+
+	# --- Hedef kuralları (deterministik, İLAN edilen) ---
+	var alive7 := [0, 1, 2, 3, 4, 5, 6]
+	eq(NightEngine.healer_target(0, 4, alive7), 4, "Otacı hedefi = son sorgulanan")
+	eq(NightEngine.healer_target(0, -1, alive7), -1, "sorgu yoksa Otacı evde")
+	eq(NightEngine.healer_target(0, 0, alive7), -1, "kendine gitmez")
+	eq(NightEngine.healer_target(0, 4, [0, 1, 2]), -1, "hedef ölmüşse evde kalır")
+	eq(NightEngine.wanderer_target(4, alive7, 7), 5, "Seyyah: saat yönünde en yakın canlı")
+	eq(NightEngine.wanderer_target(4, [0, 2, 4], 7), 0, "Seyyah ölüleri atlar (wrap)")
+
+	# --- ŞİFA: son sorgu kurbana yapılırsa kurban kurtulur (sessiz şafak) ---
+	# _make_state(7,[3]) → Av Düzeni kurbanı #2 (mevcut gece testinden bilinir).
+	var st := _make_state(7, [3])
+	st.get_character(0).role = &"Herbalist"
+	st.last_questioned = 2
+	eq(NightEngine.apply(st), -3, "apply ŞİFA döndürdü (-3)")
+	check(st.get_character(2).is_alive(), "kurban (#2) kurtuldu")
+	eq(int(st.night_events[0]["victim"]), -1, "olay sessiz şafak olarak kayıtlı")
+	eq(st.night_events[0]["healers"], [0], "iddialı Otacı olaya kamusal kaydedildi")
+	var al_t: Array = []
+	for c in st.characters:
+		al_t.append(c.alignment)
+	check(NightEngine.consistent_with_nights(al_t, st.night_events, 7), "gerçek dünya şifa olayıyla tutarlı")
+	# 'Otacı aslında kurt' dünyası: şifa imkânsız → sessiz şafak o dünyayı ELER.
+	var al_fake: Array = []
+	for i in range(7):
+		al_fake.append(Enums.Alignment.GOOD)
+	al_fake[0] = Enums.Alignment.EVIL
+	check(not NightEngine.consistent_with_nights(al_fake, st.night_events, 7), "sahte-Otacı dünyası elendi")
+	# Kurt başka yerde (#6) dünyası: Otacı hedefi (2) ≠ beklenen kurban (0) → yine tutarsız.
+	var al_w6: Array = []
+	for i in range(7):
+		al_w6.append(Enums.Alignment.GOOD)
+	al_w6[6] = Enums.Alignment.EVIL
+	check(not NightEngine.consistent_with_nights(al_w6, st.night_events, 7), "yanlış kurt konumu elendi (sessiz şafak nirengisi)")
+
+	# --- Yanlış yönlendirme: Otacı başka evdeyse av normal işler ---
+	var st2 := _make_state(7, [3])
+	st2.get_character(0).role = &"Herbalist"
+	st2.last_questioned = 5
+	eq(NightEngine.apply(st2), 2, "Otacı #5'teyken kurban (#2) ölür")
+	check(NightEngine.consistent_with_nights(al_t, st2.night_events, 7), "ölümlü gece gerçek dünyayla tutarlı")
+
+	# --- Ziyaret sayımı: Otacı + saldıran kurt aynı eve, Seyyah komşuya ---
+	var st3 := _make_state(7, [3])
+	st3.get_character(0).role = &"Herbalist"
+	st3.get_character(4).role = &"Wanderer"
+	st3.get_character(1).role = &"Watcher"
+	st3.seed = 555
+	st3.last_questioned = 2
+	NightEngine.apply(st3)  # şifa: kurban 2, Otacı 2'de → sessiz
+	var houses := NightEngine.visitors_by_house(al_t, st3.night_events, 7)
+	eq((houses.get(2, {}) as Dictionary).size(), 2, "#2'nin evine 2 ziyaret (Otacı + kurt)")
+	eq((houses.get(5, {}) as Dictionary).size(), 1, "#5'e 1 ziyaret (Seyyah #4)")
+	# Gözcü (#1, komşuları #0 ve #2): şafak raporu doğru sayar (toplam 2).
+	var reporters := NightEngine.dawn_reports(st3)
+	eq(reporters, [1], "Gözcü şafak raporunu verdi")
+	var wc := st3.get_character(1)
+	eq(wc.given, 1, "rapor sorgu harcamadan verildi (given=1)")
+	var rep: TestimonyClaim = wc.claims[0]
+	eq(rep.type, Enums.TestimonyType.VISITOR_COUNT, "rapor tipi VISITOR_COUNT")
+	eq(rep.number, 2, "rapor doğru saydı (#0+#2 toplam 2 ziyaret)")
+	var world_n := {"n": 7, "alignment": al_t, "evil_seats": [3], "nights": st3.night_events}
+	check(rep.evaluate(world_n), "gerçek Gözcü raporu GT dünyada DOĞRU")
+	rep = rep.duplicate()
+	rep.number = 0
+	check(not rep.evaluate(world_n), "yanlış sayı aynı dünyada YANLIŞ")
+
+	# --- Sahte Gözcü (kurt bluff'u): raporu GT'de YALAN olmak zorunda ---
+	var st4 := _make_state(7, [3])
+	st4.get_character(3).bluff_role = &"Watcher"
+	st4.seed = 777
+	st4.last_questioned = -1
+	NightEngine.apply(st4)  # kurban 2 ölür
+	var rep4s := NightEngine.dawn_reports(st4)
+	eq(rep4s, [3], "sahte Gözcü de rapor vermek zorunda")
+	var fake_claim: TestimonyClaim = st4.get_character(3).claims[st4.get_character(3).given - 1]
+	var world4 := {"n": 7, "alignment": al_t, "evil_seats": [3], "nights": st4.night_events}
+	check(not fake_claim.evaluate(world4), "sahte Gözcü raporu GT dünyada YANLIŞ (yalan garantisi)")
+
+	# --- Solver entegrasyonu: sessiz şafak + rapor dünyaları daraltır ---
+	var vis3 := st3.visible_for_solver()
+	var worlds3 := DeductionSolver.solve(vis3)
+	var gt_in := false
+	var fake_in := false
+	for w in worlds3:
+		if w[3] == Enums.Alignment.EVIL:
+			gt_in = true
+		if w[0] == Enums.Alignment.EVIL:
+			fake_in = true
+	check(gt_in, "gerçek dünya çözümlerde")
+	check(not fake_in, "sahte-Otacı dünyası çözümlerden elendi")
+
+	# --- GameState akışı: sorguyla yönlendir → şifa → sinyal + tazeleme ---
+	var gst := _make_state(7, [3])
+	gst.get_character(0).role = &"Herbalist"
+	gst.get_character(1).role = &"Watcher"
+	var dummy := TestimonyClaim.new()
+	dummy.type = Enums.TestimonyType.SELF_ANCHOR
+	dummy.speaker = 2
+	gst.get_character(2).claims = [dummy]
+	GameState.start_village(gst)
+	check(GameState.question(2), "kurban adayı sorgulandı (son sorgu)")
+	eq(gst.last_questioned, 2, "last_questioned işlendi")
+	var saved_flag := [false]
+	EventBus.night_saved.connect(func(): saved_flag[0] = true, CONNECT_ONE_SHOT)
+	var q_before: int = gst.get_character(1).given
+	GameState.end_day()
+	check(saved_flag[0], "night_saved sinyali geldi")
+	check(gst.get_character(2).is_alive(), "yönlendirilen şifa kurbanı kurtardı")
+	eq(gst.last_questioned, -1, "şafakta last_questioned sıfırlandı")
+	eq(gst.get_character(1).given, q_before + 1, "Gözcü raporu şafakta düştü (bedava)")
+	eq(gst.questions_left, gst.q_per_day, "sorgu hakları tazelendi (rapor hak yemedi)")
+	GameState.village = null
+
+	# --- Üretici entegrasyonu: bayraklı köyler üretilir, roller tekil, teklik korunur ---
+	var rng := RandomNumberGenerator.new()
+	var made := 0
+	var roles_ok := 0
+	var det_ok := 0
+	for s in range(40):
+		rng.seed = 61000 + s
+		var conf := {"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2,
+			"herbalist": true, "watcher": true, "wanderer": true,
+			"q_per_day": 3, "max_days": 5, "seed": rng.seed}
+		var vst: VillageState = VillageGenerator.generate(conf, rng)
+		if vst == null:
+			continue
+		made += 1
+		var hc := 0
+		var wch := 0
+		var wnd := 0
+		for c in vst.characters:
+			if c.role == &"Herbalist":
+				hc += 1
+			elif c.role == &"Watcher":
+				wch += 1
+			elif c.role == &"Wanderer":
+				wnd += 1
+		if hc == 1 and wch == 1 and wnd == 1:
+			roles_ok += 1
+		_give_all(vst)
+		if DeductionSolver.is_determined(vst.visible_for_solver()):
+			det_ok += 1
+		_give_none(vst)
+	print("  gece trafiği köyleri: %d/40" % made)
+	check(made >= 30, "bayraklı köyler üretilebildi (%d/40)" % made)
+	eq(roles_ok, made, "her köyde tam 1 Otacı + 1 Gözcü + 1 Seyyah")
+	eq(det_ok, made, "gece-trafiği köyleri tek-çözümlü")
+
+
+# -------------------------------------------------------------------
+## V3.1: Tazı (yön raporu), Sinsi Kurt, Dönek Alfa, Yüzleştirme, Vakalar.
+func _test_night_traffic2() -> void:
+	_section_start("Gece Trafiği 2 (Tazı/Sinsi/Dönek/Yüzleştirme)")
+
+	# --- attack_direction: tek doğruluk kaynağı ---
+	eq(NightEngine.attack_direction(2, 3, 7), Enums.Direction.CLOCKWISE, "saldıran CW komşu")
+	eq(NightEngine.attack_direction(3, 2, 7), Enums.Direction.COUNTER_CLOCKWISE, "saldıran CCW komşu")
+	eq(NightEngine.attack_direction(0, 4, 8), Enums.Direction.EQUIDISTANT, "tam karşı = eşit")
+
+	# --- Tazı: gerçek rapor doğru, sahte rapor GT'de yalan ---
+	var st := _make_state(7, [3])
+	st.get_character(0).role = &"Hound"
+	st.seed = 901
+	eq(NightEngine.apply(st), 2, "kurban #2")
+	var reps := NightEngine.dawn_reports(st)
+	eq(reps, [0], "Tazı şafak raporu verdi")
+	var hcl: TestimonyClaim = st.get_character(0).claims[0]
+	eq(hcl.type, Enums.TestimonyType.ATTACKER_DIRECTION, "rapor tipi ATTACKER_DIRECTION")
+	eq(hcl.direction, Enums.Direction.CLOCKWISE, "yön doğru (kurt #3, kurban #2 → CW)")
+	var al7: Array = []
+	for c in st.characters:
+		al7.append(c.alignment)
+	var w7 := {"n": 7, "alignment": al7, "evil_seats": [3], "nights": st.night_events}
+	check(hcl.evaluate(w7), "gerçek Tazı raporu GT'de DOĞRU")
+	var st_f := _make_state(7, [3])
+	st_f.get_character(3).bluff_role = &"Hound"
+	st_f.seed = 902
+	NightEngine.apply(st_f)
+	NightEngine.dawn_reports(st_f)
+	var fcl: TestimonyClaim = st_f.get_character(3).claims[st_f.get_character(3).given - 1]
+	var w7f := {"n": 7, "alignment": al7, "evil_seats": [3], "nights": st_f.night_events}
+	check(not fcl.evaluate(w7f), "sahte Tazı raporu GT'de YANLIŞ")
+	# Ölümsüz gecede Tazı susar (gerçek de sahte de — sızıntı yok).
+	var st_q := _make_state(7, [3])
+	st_q.get_character(0).role = &"Hound"
+	st_q.get_character(1).role = &"Herbalist"
+	st_q.last_questioned = 2
+	eq(NightEngine.apply(st_q), -3, "şifa gecesi")
+	eq(NightEngine.dawn_reports(st_q), [], "iz yoksa Tazı raporu yok")
+
+	# --- Sinsi Kurt: en küçük seat'li canlı kurt, en çok sorgulanana sürtünür ---
+	var sp := _make_state(7, [3])
+	sp.modifiers = ["prowler"]
+	sp.get_character(5).given = 2  # en çok sorgulanan
+	NightEngine.apply(sp)
+	var al_sp: Array = []
+	for c in sp.characters:
+		al_sp.append(c.alignment)
+	var hh := NightEngine.visitors_by_house(al_sp, sp.night_events, 7)
+	eq((hh.get(5, {}) as Dictionary).size(), 1, "Sinsi izi: #5'in evine 1 ziyaret")
+	check((hh.get(5, {}) as Dictionary).has(3), "ziyaretçi kurt (#3)")
+	eq(int(sp.night_events[0].get("mq", -1)), 5, "mq olaya kamusal kaydedildi")
+
+	# --- Dönek Alfa: tek gün NEAREST, çift gün FARTHEST; kural olaya işlenir ---
+	var sm := _make_state(7, [3])
+	sm.alternating_rule = true
+	eq(NightEngine.effective_rule(sm), Enums.NightRule.NEAREST, "gün 1 → NEAREST")
+	eq(NightEngine.apply(sm), 2, "gün 1 kurbanı en yakın (#2)")
+	sm.day = 2
+	eq(NightEngine.effective_rule(sm), Enums.NightRule.FARTHEST, "gün 2 → FARTHEST")
+	eq(NightEngine.apply(sm), 0, "gün 2 kurbanı en uzak (#0)")
+	var al_sm: Array = []
+	for c in sm.characters:
+		al_sm.append(c.alignment)
+	check(NightEngine.consistent_with_nights(al_sm, sm.night_events, 7), "dönek geceler GT ile tutarlı")
+
+	# --- Yüzleştirme: 2 sorgu, iyi doğru söyler, kurt ters, çift 1 kez ---
+	var sc := _make_state(5, [2])
+	GameState.start_village(sc)
+	eq(sc.questions_left, 3, "başta 3 hak")
+	check(GameState.confront(0, 2), "yüzleştirme yapıldı")
+	eq(sc.questions_left, 1, "2 hak düştü")
+	var ccl: TestimonyClaim = sc.get_character(0).claims[0]
+	eq(ccl.type, Enums.TestimonyType.ALIGNMENT_OF, "cevap ALIGNMENT_OF")
+	eq(ccl.alignment, Enums.Alignment.EVIL, "iyi konuşan doğru söyledi (#2 kurt)")
+	eq(sc.last_questioned, 0, "yüzleştirme son sorgu sayılır (Otacı hedefi)")
+	check(not GameState.confront(0, 2), "aynı çift ikinci kez yüzleştirilemez")
+	check(not GameState.confront(1, 3), "hak yetmezse reddedilir (1 < 2)")
+	eq(sc.questions_left, 1, "reddedilen yüzleştirme hak yakmaz")
+	sc.questions_left = 3
+	check(GameState.confront(2, 0), "kurt yüzleştirildi")
+	var wcl: TestimonyClaim = sc.get_character(2).claims[sc.get_character(2).given - 1]
+	eq(wcl.alignment, Enums.Alignment.EVIL, "kurt tersini söyledi (#0 iyi → 'kurt' dedi)")
+	GameState.village = null
+
+	# --- Üretici: V3.1 bayraklı köyler üretilebilir + roller/modifier'lar yerinde ---
+	var rng := RandomNumberGenerator.new()
+	var made := 0
+	var ok := 0
+	for s in range(30):
+		rng.seed = 62000 + s
+		var conf := {"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2,
+			"hound": true, "watcher": true, "prowler": true, "alternating": true,
+			"q_per_day": 3, "max_days": 5, "seed": rng.seed}
+		var vst: VillageState = VillageGenerator.generate(conf, rng)
+		if vst == null:
+			continue
+		made += 1
+		var hounds := 0
+		for c in vst.characters:
+			if c.role == &"Hound":
+				hounds += 1
+		if hounds == 1 and vst.modifiers.has("prowler") and vst.modifiers.has("moody") \
+				and vst.alternating_rule:
+			ok += 1
+	print("  V3.1 köyleri: %d/30" % made)
+	check(made >= 22, "V3.1 bayraklı köyler üretilebildi (%d/30)" % made)
+	eq(ok, made, "her köyde 1 Tazı + prowler/moody ilanı + dönek kural")
+
+	# --- Vakalar: her el yapımı senaryo üretilebilir olmalı ---
+	var run_map_script = load("res://scripts/ui/run_map.gd")
+	var case_fails: Array = []
+	for case in run_map_script.CASES:
+		var cfg: Dictionary = (case["cfg"] as Dictionary).duplicate()
+		var crng := RandomNumberGenerator.new()
+		crng.seed = int(cfg["seed"])
+		if VillageGenerator.generate(cfg, crng) == null:
+			case_fails.append(case["key"])
+	check(case_fails.is_empty(), "tüm vakalar üretilebilir (kırık: %s)" % str(case_fails))
 
 
 # -------------------------------------------------------------------
@@ -947,9 +1227,15 @@ func _test_ascension() -> void:
 	# V2 knob: A4 sorgu hakkını kısar.
 	var m4: Array = RunManager._build_map(4, 999)
 	eq(int(m4[1]["config"]["q_per_day"]), 2, "asc4: köy 1'de sorgu hakkı 3->2")
-	# Boss çifte av (boss artık son düğüm — dükkân/olay araya girdi; seed 999 → Aç Alfa).
+	# Boss son düğümdür ve varyantlardan biridir (seed→varyant eşlemesi değişebilir;
+	# 4. varyant "Dönek Alfa" eklenince sabit-seed beklentisi kırılmıştı).
 	var m0: Array = RunManager._build_map(0, 999)
-	eq(int(m0[m0.size() - 1]["config"].get("kills_per_night", 1)), 2, "boss gecede 2 av")
+	var boss_cfg: Dictionary = m0[m0.size() - 1]["config"]
+	check(bool(boss_cfg.get("boss", false)), "son düğüm bir boss varyantı")
+	var boss_names: Array = []
+	for bs in RunManager.BOSS_SPECS:
+		boss_names.append(bs["boss_name"])
+	check(boss_cfg.get("boss_name", "") in boss_names, "boss adı varyant listesinden")
 
 	# Boss VARYANTLARI: her biri düşük ve yüksek çilede üretilebilir olmalı.
 	var bfails: Array = []

@@ -22,6 +22,45 @@ const T := {
 		"tr": "Sürü bu gece sağ çıktı.",
 		"en": "The flock survived the night.",
 	},
+	# --- V3 Gece Trafiği (bkz. CLAUDE.md §0.7) ---
+	"dawn_saved": {
+		"tr": "Sessiz şafak — kurt saldırdı ama Otacı oradaydı. Kimse ölmedi.",
+		"en": "A quiet dawn — the wolf struck, but the Herbalist was there. No one died.",
+	},
+	"dawn_report": {
+		"tr": "Şafak raporları düştü (%s) — sorgu harcamadan.",
+		"en": "The dawn reports are in (%s) — no question spent.",
+	},
+	# --- V3.1: Yüzleştirme (Y) ---
+	"confront_pick": {
+		"tr": "YÜZLEŞTİRME — #%d kimin hakkında konuşsun? Hedefi tıkla (2 sorgu hakkı) · iptal: aynı kart",
+		"en": "CONFRONTATION — who should #%d speak about? Click a target (costs 2 questions) · cancel: same card",
+	},
+	"confront_no_q": {
+		"tr": "Yüzleştirme 2 sorgu hakkı ister — hakkın yetmiyor.",
+		"en": "A confrontation costs 2 questions — you don't have enough.",
+	},
+	"confront_pair_used": {
+		"tr": "Bu ikiliyi zaten yüzleştirdin — aynı soruya aynı cevap.",
+		"en": "You already confronted this pair — same question, same answer.",
+	},
+	"confront_hint": {
+		"tr": "İpucu: Y ile yüzleştirme — bir kartı seç, hedefi tıklat; 2 sorguya nokta atışı cevap.",
+		"en": "Tip: press Y to confront — pick a card, click a target; a pointed answer for 2 questions.",
+	},
+	# --- V3.1: Hipotez modu (H) ---
+	"hypo_on": {
+		"tr": "HİPOTEZ: '#%d kurt' varsayımı — %d dünya tutuyor. Halkalar: kızıl=kesin kurt, yeşil=kesin koyun. Kapat: H",
+		"en": "HYPOTHESIS: assuming '#%d is a wolf' — %d worlds hold. Rings: red=certain wolf, green=certain sheep. Toggle off: H",
+	},
+	"hypo_off": {
+		"tr": "Hipotez kapatıldı.",
+		"en": "Hypothesis cleared.",
+	},
+	"hypo_impossible": {
+		"tr": "İMKÂNSIZ: hiçbir tutarlı dünyada #%d kurt değil — bu da kanıttır: #%d KOYUN.",
+		"en": "IMPOSSIBLE: no consistent world has #%d as a wolf — which is proof itself: #%d is a SHEEP.",
+	},
 	"day_refreshed": {
 		"tr": "GÜN %d — sorgu hakların tazelendi",
 		"en": "DAY %d — your questions are restored",

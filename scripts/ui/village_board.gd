@@ -87,6 +87,13 @@ var _cinematic := false       ## sinematik oynarken girişi kilitle
 var _execute_mode := false
 var _hovered_seat := -1
 var _night_count := 0          ## geçen gece sayısı (arka plan kızıla kayar — tehdit)
+var _night_saved := false      ## V3: bu gece Otacı bir kurban kurtardı (şafak banner'ı)
+var _dawn_reporters: Array = []  ## V3: şafak raporu veren Gözcü seat'leri
+var _fx_layer: Control         ## oklar/bağlar/hipotez halkaları — kart ve tooltip'in ÜSTÜNDE
+var _hypo_seat := -1           ## V3.1 hipotez: "farz et bu kurt" (H); -1 = kapalı
+var _hypo_forced: Dictionary = {}  ## hipotez altında kesinleşen seat -> Alignment
+var _hypo_worlds := 0          ## hipotezi tutan dünya sayısı (banner)
+var _confront_seat := -1       ## V3.1 yüzleştirme: konuşacak kart seçildi (Y); -1 = kapalı
 var _slayer_seat := -1         ## Kılıççı hedefleme modu (aktif yetenek)
 var _protect_mode := false     ## AĞIL: gece öncesi koruma seçim modu
 
@@ -148,6 +155,14 @@ func _ready() -> void:
 	_hud.night_hover_changed.connect(_on_night_hover)
 	_tooltip = AbilityTooltip.new()
 	add_child(_tooltip)
+	# FX katmanı: yön okları / çelişki bağları / hipotez halkaları. Kartların VE
+	# bilgi kartının (tooltip) üstünde çizilir — "bilgi kartı açılınca oklar
+	# görünmüyor" sorununun çözümü (kullanıcı isteği).
+	_fx_layer = Control.new()
+	_fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fx_layer.draw.connect(_draw_fx_layer)
+	add_child(_fx_layer)
 	_log = TestimonyLog.new()
 	add_child(_log)
 	# Duyuru şeridi BOARD'undur: gece HUD çekilirken duyurular görünür kalır.
@@ -199,6 +214,9 @@ func _connect_events() -> void:
 			_hud.flash_banner(Loc.t("trap_sprung") % [trapped, caught], Palette.SAFFRON)
 		_recompute_deduction())
 	EventBus.mark_changed.connect(func(_s, _m): _refresh_cards())
+	# V3 Gece Trafiği: şifa-kurtuluşu ve Gözcü raporları şafak sekansında anlatılır.
+	EventBus.night_saved.connect(func(): _night_saved = true)
+	EventBus.dawn_reports_given.connect(func(seats): _dawn_reporters = seats)
 	EventBus.village_won.connect(_on_village_won)
 	EventBus.village_lost.connect(_on_village_lost)
 
@@ -208,6 +226,9 @@ func _new_village() -> void:
 	if RunManager.has_active_run():
 		# Sefer modu: mevcut düğümün (seed'li) config'i.
 		conf = RunManager.current_village_config().duplicate()
+	elif not GameState.case_config.is_empty():
+		# VAKA modu (V3.1): harita ekranından seçilen isimli, sabit seed'li senaryo.
+		conf = GameState.case_config.duplicate()
 	else:
 		# Bağımsız mod (test/geliştirme): rastgele köy.
 		conf = VILLAGE_CONFIG.duplicate()
@@ -228,6 +249,9 @@ func _new_village() -> void:
 	_sync_grass_night_tint()
 	_slayer_seat = -1
 	_protect_mode = false
+	_confront_seat = -1
+	_hypo_seat = -1
+	_hypo_forced.clear()
 	if _tooltip != null:
 		_tooltip.hide_tip()
 	_spawn_cards(state.n)
@@ -529,9 +553,58 @@ func _recompute_deduction(changed_seat: int = -1) -> void:
 	for card in _cards:
 		card.conflict_hint = _conflicts.has(card.seat)
 		card.queue_redraw()
+	_update_hypothesis()  # dünya kümesi değişti → hipotez kesinlikleri tazelensin
 	if _log != null and _log.is_open():
 		_log.refresh()
 	queue_redraw()
+
+
+## V3.1 HİPOTEZ: "_hypo_seat kurt" varsayımını mevcut dünya kümesine uygula.
+## Varsayımı tutan dünyalarda HER koltukta saf sabitse kesinlik halkası çizilir.
+## Hiçbir dünya tutmuyorsa varsayım İMKÂNSIZDIR — bu da kanıttır (banner).
+func _update_hypothesis() -> void:
+	_hypo_forced.clear()
+	_hypo_worlds = 0
+	if _hypo_seat < 0 or GameState.village == null:
+		return
+	var filtered: Array = []
+	for w in _worlds:
+		if w[_hypo_seat] == Enums.Alignment.EVIL:
+			filtered.append(w)
+	_hypo_worlds = filtered.size()
+	if filtered.is_empty():
+		if _hud != null:
+			_hud.flash_banner(Loc.t("hypo_impossible") % [_hypo_seat, _hypo_seat], Palette.SAFFRON)
+		_hypo_seat = -1
+		return
+	var n: int = GameState.village.n
+	for s in range(n):
+		var first = filtered[0][s]
+		var same := true
+		for w in filtered:
+			if w[s] != first:
+				same = false
+				break
+		if same:
+			_hypo_forced[s] = first
+
+
+func _toggle_hypothesis(seat: int) -> void:
+	if seat < 0 or GameState.village == null or not GameState.is_active():
+		return
+	if _hypo_seat == seat:
+		_hypo_seat = -1
+		_hypo_forced.clear()
+		if _hud != null:
+			_hud.flash_banner(Loc.t("hypo_off"), Color("9db8e8"))
+		return
+	var c := GameState.village.get_character(seat)
+	if not c.is_alive() or c.revealed:
+		return
+	_hypo_seat = seat
+	_update_hypothesis()
+	if _hypo_seat >= 0 and _hud != null:
+		_hud.flash_banner(Loc.t("hypo_on") % [seat, _hypo_worlds], Color(0.72, 0.55, 0.98))
 
 
 ## a ve b AYNI ANDA dürüst-İYİ olabilir mi? Kompozisyon + kefiller + cesetler +
@@ -621,6 +694,8 @@ func _spawn_cards(n: int) -> void:
 	# Tooltip kartların ÜSTÜNde kalsın (en son eklenen en üstte çizilir).
 	if _tooltip != null:
 		move_child(_tooltip, get_child_count() - 1)
+	if _fx_layer != null:
+		move_child(_fx_layer, get_child_count() - 1)  # oklar tooltip'in de üstünde
 
 
 ## Kartlar ortak desteden (alt-orta, ekran dışı) TEK TEK dağıtılsın.
@@ -830,9 +905,15 @@ func _on_night_passed(victims: Array) -> void:
 		if _hud != null:
 			_hud.flash_banner(Loc.t("wolf_attacked") % v, Palette.BLOOD)
 		await get_tree().create_timer(0.9).timeout
-	if victims.is_empty() and _hud != null:
+	# V3: şifa-kurtuluşu — "Otacı gerçek ve oradaydı" çıkarımının kapısını açan
+	# kanıt anıdır; kurban olan gecede de (çift av) ayrıca duyurulur.
+	if _night_saved and _hud != null:
+		_hud.flash_banner(Loc.t("dawn_saved"), Palette.SAFFRON)
+		await get_tree().create_timer(0.9).timeout
+	elif victims.is_empty() and _hud != null:
 		_hud.flash_banner(Loc.t("flock_survived"), Palette.SAFFRON)
 		await get_tree().create_timer(0.6).timeout
+	_night_saved = false
 	# Şafak YAVAŞÇA söker (yıldızlar önce kaybolur, gök en son ağarır).
 	var t2 := create_tween()
 	t2.tween_method(_set_night_alpha, 1.0, 0.0, 2.6) \
@@ -845,6 +926,15 @@ func _on_night_passed(victims: Array) -> void:
 		_hud.update_all()
 		if GameState.is_active():
 			_hud.flash_banner(Loc.t("day_refreshed") % GameState.village.day, Palette.SAFFRON)
+	# V3: Gözcü şafak raporları — kartlar tazelendi (balon yeni raporu gösterir);
+	# banner oyuncuyu rapora yönlendirir.
+	if not _dawn_reporters.is_empty() and _hud != null and GameState.is_active():
+		await get_tree().create_timer(1.1).timeout
+		var rp: Array = []
+		for s in _dawn_reporters:
+			rp.append("#%d" % int(s))
+		_hud.flash_banner(Loc.t("dawn_report") % ", ".join(rp), Color("9db8e8"))
+	_dawn_reporters = []
 	queue_redraw()
 
 
@@ -949,6 +1039,8 @@ func _process(delta: float) -> void:
 		_clue_prog = minf(1.0, _clue_prog + delta * 2.2)
 	else:
 		_clue_alpha = maxf(0.0, _clue_alpha - delta * 3.0)
+	if _fx_layer != null:
+		_fx_layer.queue_redraw()  # oklar/bağlar/halkalar canlı (üst katman)
 
 	# Kazanma patlaması parçacıkları (sönümlü uçuş).
 	if not _burst.is_empty():
@@ -1037,26 +1129,8 @@ func _draw() -> void:
 	_draw_eye_backing(center, breathe)  # gözün gömülü olduğu koyu gövde
 	_draw_nazar_eye(center, breathe)
 
-	# --- Yön/mesafe ifadesi görselleştirmesi (kavisli ok / adım izi) ---
-	if _clue_alpha > 0.01 and _clue_seat >= 0:
-		_draw_clue_fx(center)
-
-	# --- Çelişki bağları: hover edilen çelişkili karttan ortaklarına kızıl kesikli hat.
-	# Hat kart MERKEZLERİNE değil KENARLARINA bağlanır (kartın altından garip
-	# çıkmasın); iki uçta küçük düğüm noktası — "bağ" okunur.
-	if _hovered_seat >= 0 and _conflicts.has(_hovered_seat) and _hovered_seat < _cards.size():
-		var from: Vector2 = _cards[_hovered_seat].position + _cards[_hovered_seat].size * 0.5
-		for other in _conflicts[_hovered_seat]:
-			if other < _cards.size():
-				var to: Vector2 = _cards[other].position + _cards[other].size * 0.5
-				var dirv := (to - from).normalized()
-				var a := from + dirv * 96.0
-				var b := to - dirv * 96.0
-				if a.distance_to(b) > 24.0:
-					var lcol := Color(0.86, 0.11, 0.06, 0.7)
-					draw_dashed_line(a, b, lcol, 3.0, 12.0)
-					draw_circle(a, 4.0, lcol)
-					draw_circle(b, 4.0, lcol)
+	# (Yön okları, çelişki bağları ve hipotez halkaları _draw_fx_layer'da —
+	# kartların ve bilgi kartının ÜSTÜNDEKİ katman.)
 
 	# Süzülen kıvılcım/toz parçacıkları — 4-köşe yıldız (twinkle).
 	for s in _sparks:
@@ -1069,6 +1143,44 @@ func _draw() -> void:
 		var la := clampf(p.life, 0.0, 1.0)
 		_draw_star(p.pos, p.size * (0.6 + 0.4 * la), Color(1.0, 0.84, 0.42, la), p.rot)
 		_draw_star(p.pos, p.size * 0.5 * la, Color(1.0, 0.97, 0.85, la), -p.rot * 0.7)
+
+
+## FX katmanı (kart + tooltip ÜSTÜ): yön okları, çelişki bağları, hipotez halkaları.
+func _draw_fx_layer() -> void:
+	var center := Vector2(size.x * 0.5, size.y * 0.5 + 2.0)
+	# Yön/mesafe ifadesi görselleştirmesi (kavisli ok / adım izi).
+	if _clue_alpha > 0.01 and _clue_seat >= 0:
+		_draw_clue_fx(_fx_layer, center)
+	# Çelişki bağları: hover edilen çelişkili karttan ortaklarına kızıl kesikli hat.
+	# Hat kart MERKEZLERİNE değil KENARLARINA bağlanır; iki uçta düğüm noktası.
+	if _hovered_seat >= 0 and _conflicts.has(_hovered_seat) and _hovered_seat < _cards.size():
+		var from: Vector2 = _cards[_hovered_seat].position + _cards[_hovered_seat].size * 0.5
+		for other in _conflicts[_hovered_seat]:
+			if other < _cards.size():
+				var to: Vector2 = _cards[other].position + _cards[other].size * 0.5
+				var dirv := (to - from).normalized()
+				var a := from + dirv * 96.0
+				var b := to - dirv * 96.0
+				if a.distance_to(b) > 24.0:
+					var lcol := Color(0.86, 0.11, 0.06, 0.7)
+					_fx_layer.draw_dashed_line(a, b, lcol, 3.0, 12.0)
+					_fx_layer.draw_circle(a, 4.0, lcol)
+					_fx_layer.draw_circle(b, 4.0, lcol)
+	# V3.1 HİPOTEZ halkaları: varsayım altında kesinleşen koltuklar (bkz. §0.7 V3.1).
+	if _hypo_seat >= 0 and _hypo_seat < _cards.size():
+		var hc: Vector2 = _cards[_hypo_seat].position + _cards[_hypo_seat].size * 0.5
+		var pulse := 1.0 + 0.05 * sin(_time * 3.2)
+		_fx_layer.draw_arc(hc, 96.0 * pulse, 0, TAU, 48, Color(0.62, 0.40, 0.95, 0.85), 3.5, true)
+		for s in _hypo_forced:
+			if s == _hypo_seat or s >= _cards.size():
+				continue
+			var ch := GameState.village.get_character(s)
+			if ch.revealed or not ch.is_alive():
+				continue  # zaten bilinen yüz — halka gürültü olur
+			var cc: Vector2 = _cards[s].position + _cards[s].size * 0.5
+			var col := Color(0.86, 0.11, 0.06, 0.8) if _hypo_forced[s] == Enums.Alignment.EVIL \
+				else Color(0.32, 0.78, 0.42, 0.8)
+			_fx_layer.draw_arc(cc, 92.0, 0, TAU, 48, col, 2.5, true)
 
 
 ## Kartın SON ifadesi yön/mesafe tipiyse döndür; değilse null.
@@ -1087,7 +1199,11 @@ func _clue_claim(seat: int) -> TestimonyClaim:
 
 ## İfade görselleştirmesi: konuşan karttan çember boyunca kavisli ok (yön) ya da
 ## iki yana adım izi + hedef işareti (mesafe). Referans dili: mor rehber oklar.
-func _draw_clue_fx(center: Vector2) -> void:
+## TUTARLILIK KURALI: yön oku iki koltuğun ARASINDA biter (step*1.5) — okun ucu
+## belirli bir karta denk gelirse "kurt bu kart" diye YANLIŞ okunuyordu; yön oku
+## yalnız yön söyler, koltuk göstermez. (Mesafe izi ise tam koltukta biter — o
+## gerçekten koltuk gösterir.)
+func _draw_clue_fx(ci: CanvasItem, center: Vector2) -> void:
 	var t := _clue_claim(_clue_seat)
 	if t == null or _cards.is_empty():
 		return
@@ -1099,16 +1215,16 @@ func _draw_clue_fx(center: Vector2) -> void:
 	if t.type == Enums.TestimonyType.NEAREST_EVIL_DIRECTION:
 		match t.direction:
 			Enums.Direction.CLOCKWISE:
-				_draw_curved_arrow(center, r, a0 + step * 0.30, a0 + step * 1.85, CLUE_VIOLET)
+				_draw_curved_arrow(ci, center, r, a0 + step * 0.30, a0 + step * 1.50, CLUE_VIOLET)
 			Enums.Direction.COUNTER_CLOCKWISE:
-				_draw_curved_arrow(center, r, a0 - step * 0.30, a0 - step * 1.85, CLUE_VIOLET)
+				_draw_curved_arrow(ci, center, r, a0 - step * 0.30, a0 - step * 1.50, CLUE_VIOLET)
 			_:
-				# Eşit uzaklık: iki yöne kısa ok.
-				_draw_curved_arrow(center, r, a0 + step * 0.30, a0 + step * 1.30, CLUE_VIOLET)
-				_draw_curved_arrow(center, r, a0 - step * 0.30, a0 - step * 1.30, CLUE_VIOLET)
+				# Eşit uzaklık: iki yöne kısa ok (uçlar koltuk aralarında).
+				_draw_curved_arrow(ci, center, r, a0 + step * 0.30, a0 + step * 0.85, CLUE_VIOLET)
+				_draw_curved_arrow(ci, center, r, a0 - step * 0.30, a0 - step * 0.85, CLUE_VIOLET)
 	else:
-		_draw_distance_trail(center, r, a0, step, t.number, 1)
-		_draw_distance_trail(center, r, a0, step, t.number, -1)
+		_draw_distance_trail(ci, center, r, a0, step, t.number, 1)
+		_draw_distance_trail(ci, center, r, a0, step, t.number, -1)
 
 
 static func _ease_out_cubic(p: float) -> float:
@@ -1116,7 +1232,7 @@ static func _ease_out_cubic(p: float) -> float:
 
 
 ## Kavisli ok: kuyruktan uca kalınlaşan/parlaklaşan yay + nabızlı ok başı.
-func _draw_curved_arrow(center: Vector2, radius: float, ang_from: float, ang_to: float, col: Color) -> void:
+func _draw_curved_arrow(ci: CanvasItem, center: Vector2, radius: float, ang_from: float, ang_to: float, col: Color) -> void:
 	var alpha := _clue_alpha
 	var sweep := (ang_to - ang_from) * _ease_out_cubic(_clue_prog)
 	var segs := 26
@@ -1128,8 +1244,8 @@ func _draw_curved_arrow(center: Vector2, radius: float, ang_from: float, ang_to:
 		var f := float(i) / float(segs)
 		var w := lerpf(2.5, 7.5, f)
 		var sa := alpha * lerpf(0.22, 1.0, f)
-		draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa * 0.30), w + 6.0)  # glow
-		draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa), w)
+		ci.draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa * 0.30), w + 6.0)  # glow
+		ci.draw_line(pts[i], pts[i + 1], Color(col.r, col.g, col.b, sa), w)
 	# Ok başı: uç teğeti yönünde üçgen, hafif nabız.
 	var tip := pts[segs]
 	var tangent := (pts[segs] - pts[segs - 1]).normalized()
@@ -1137,8 +1253,8 @@ func _draw_curved_arrow(center: Vector2, radius: float, ang_from: float, ang_to:
 		return
 	var perp := Vector2(-tangent.y, tangent.x)
 	var hs := 17.0 * (1.0 + 0.08 * sin(_time * 6.0))
-	draw_circle(tip, hs * 0.95, Color(col.r, col.g, col.b, alpha * 0.16))
-	draw_colored_polygon(PackedVector2Array([
+	ci.draw_circle(tip, hs * 0.95, Color(col.r, col.g, col.b, alpha * 0.16))
+	ci.draw_colored_polygon(PackedVector2Array([
 		tip + tangent * hs,
 		tip - tangent * hs * 0.45 + perp * hs * 0.62,
 		tip - tangent * hs * 0.45 - perp * hs * 0.62,
@@ -1147,7 +1263,7 @@ func _draw_curved_arrow(center: Vector2, radius: float, ang_from: float, ang_to:
 
 ## Mesafe izi: konuşandan d adım öteye noktalı yay + hedefte nabızlı elmas.
 ## İki yöne de çizilir — "en yakın kurt d adımda" iki taraftan biri demektir.
-func _draw_distance_trail(center: Vector2, radius: float, a0: float, step: float, d: int, dir_sign: int) -> void:
+func _draw_distance_trail(ci: CanvasItem, center: Vector2, radius: float, a0: float, step: float, d: int, dir_sign: int) -> void:
 	if d <= 0:
 		return
 	var alpha := _clue_alpha
@@ -1159,14 +1275,14 @@ func _draw_distance_trail(center: Vector2, radius: float, a0: float, step: float
 		var f := float(i) / float(dots)
 		var a := lerpf(a1, a2, f)
 		var p := center + Vector2(cos(a), sin(a)) * radius
-		draw_circle(p, 2.6, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * lerpf(0.30, 0.85, f)))
+		ci.draw_circle(p, 2.6, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * lerpf(0.30, 0.85, f)))
 	# Hedef koltuk hizasında işaret (yay tamamlanınca belirir).
 	if prog > 0.92:
 		var ta := a0 + float(dir_sign) * step * float(d)
 		var tp := center + Vector2(cos(ta), sin(ta)) * radius
 		var s := 9.0 * (1.0 + 0.15 * sin(_time * 5.0))
-		draw_circle(tp, s * 1.8, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * 0.18))
-		draw_colored_polygon(PackedVector2Array([
+		ci.draw_circle(tp, s * 1.8, Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha * 0.18))
+		ci.draw_colored_polygon(PackedVector2Array([
 			tp + Vector2(0, -s), tp + Vector2(s, 0), tp + Vector2(0, s), tp + Vector2(-s, 0),
 		]), Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha))
 
@@ -1447,6 +1563,14 @@ func _on_card_clicked(seat: int) -> void:
 			_hud.flash_banner(Loc.t("pen_protected") % seat, Color("9db8e8"))
 		GameState.end_day(seat)
 		return
+	# V3.1 YÜZLEŞTİRME hedefleme: sıradaki tık hedef (aynı karta tık = iptal).
+	if _confront_seat >= 0:
+		var cf := _confront_seat
+		_confront_seat = -1
+		if seat != cf:
+			GameState.confront(cf, seat)
+		_refresh_cards()
+		return
 	# Aktif yetenek (Kılıççı/Avcı) hedefleme modu: sıradaki tık hedef (aynı karta tık = iptal).
 	if _slayer_seat >= 0:
 		var sl := _slayer_seat
@@ -1491,6 +1615,7 @@ func _on_end_day() -> void:
 	if _cinematic or not GameState.is_active():
 		return
 	_slayer_seat = -1
+	_confront_seat = -1
 	_set_execute_mode(false)
 	if not _protect_mode:
 		_protect_mode = true
@@ -1559,6 +1684,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_R:
 				if not _cinematic:
 					_new_village()
+			KEY_H:
+				# H: hipotez modu — üstüne gelinen kartı "farz et kurt" işaretle (V3.1).
+				if not _cinematic:
+					_toggle_hypothesis(_hovered_seat if _hovered_seat >= 0 else _hypo_seat)
+			KEY_Y:
+				# Y: yüzleştirme — üstüne gelinen kart, seçilecek hedef hakkında konuşur.
+				if _cinematic or not GameState.is_active():
+					return
+				if _confront_seat >= 0:
+					_confront_seat = -1  # açıkken tekrar Y = iptal
+				elif _hovered_seat >= 0:
+					var cc := GameState.village.get_character(_hovered_seat)
+					if cc.is_alive():
+						_confront_seat = _hovered_seat
+						if _hud != null:
+							_hud.flash_banner(Loc.t("confront_pick") % _confront_seat, Palette.SAFFRON)
 
 
 ## TAB burada (unhandled değil): UI odak gezintisi (buton sekmesi) TAB'ı yutuyordu.

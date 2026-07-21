@@ -11,6 +11,8 @@ signal character_questioned(seat: int)          ## ifade alındı (given arttı)
 signal question_denied(seat: int, reason: String) ## hak yok / söyleyecek şey yok
 signal night_kill(victim_seat: int)             ## kurt bir koyunu avladı
 signal night_passed(victims: Array)             ## gece bitti (kurban listesi; boş=av yok)
+signal night_saved()                            ## V3: Otacı kurbanı kurtardı (sessiz şafak)
+signal dawn_reports_given(seats: Array)         ## V3: Gözcü şafak raporları düştü
 signal day_started(day: int)                    ## şafak — sorgu hakları tazelendi
 signal question_bought(questions_left: int, coins: int) ## parayla +1 sorgu alındı
 signal player_damaged(amount: int, current_hp: int)

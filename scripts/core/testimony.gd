@@ -23,6 +23,7 @@ extends Resource
 @export var direction: int = Enums.Direction.CLOCKWISE
 @export var compare: int = Enums.Compare.EQUAL
 @export var bool_val: bool = true
+@export var day: int = -1                ## V3: VISITOR_COUNT — raporun ait olduğu GECE (gün no)
 @export_multiline var text: String = ""
 
 
@@ -135,6 +136,38 @@ func evaluate(world: Dictionary) -> bool:
 			if n % 2 != 0:
 				return false
 			return al[(speaker + n / 2) % n] == alignment
+
+		Enums.TestimonyType.VISITOR_COUNT:
+			# V3 Gözcü şafak raporu: hedef evlerin (iki kapı komşusu) `day` gecesi
+			# aldığı TOPLAM ziyaret sayısı. Gece trafiği aday dünyaya göre yeniden
+			# hesaplanır (NightEngine.visitors_by_house — tek doğruluk kaynağı §18).
+			# world'de gece kaydı yoksa kısıt üretmez (üretim-anı taban teklik testi).
+			if not world.has("nights"):
+				return true
+			var day_events: Array = []
+			for ev in world["nights"]:
+				if int(ev.get("day", -1)) == day:
+					day_events.append(ev)
+			if day_events.is_empty():
+				return true
+			var houses: Dictionary = NightEngine.visitors_by_house(al, day_events, n)
+			var total := 0
+			for h in targets:
+				total += (houses[h] as Dictionary).size() if houses.has(h) else 0
+			return total == number
+
+		Enums.TestimonyType.ATTACKER_DIRECTION:
+			# V3.1 Tazı şafak raporu: `day` gecesi `targets[0]` kurbanına saldıran
+			# kurdun geliş yönü. Saldıran, aday dünyaya göre yeniden hesaplanır.
+			if not world.has("nights"):
+				return true
+			for ev in world["nights"]:
+				if int(ev.get("day", -1)) == day and int(ev.get("victim", -1)) == targets[0]:
+					var atk := NightEngine.pick_attacker(al, ev["alive"], targets[0], n)
+					if atk < 0:
+						return false
+					return NightEngine.attack_direction(targets[0], atk, n) == direction
+			return true
 
 		_:  ## SELF_ANCHOR / flavor: kısıt üretmez
 			return true

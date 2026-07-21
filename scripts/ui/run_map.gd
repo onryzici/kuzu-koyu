@@ -29,6 +29,8 @@ var _eyes: Array = []          ## aktif göz çiftleri: {pos, t, dur, gap}
 var _eye_timer := 0.0
 var _life_rng := RandomNumberGenerator.new()
 var _settings_btn: Button
+var _cases_btn: Button         ## V3.1: el yapımı vakalar menüsü
+var _cases_layer: Control      ## vaka seçim overlay'i
 var _btn_row: BoxContainer     ## ikincil butonlar (menüde dikey sütun, seferde yatay sıra)
 var _records_panel: PanelContainer
 var _skip_btn: Button          ## elit köyü atla (yalnız ELITE düğümünde görünür)
@@ -46,9 +48,28 @@ const MENU_CANDLES := [
 ]
 
 
+## V3.1 VAKALAR: el yapımı, isimli, sabit seed'li senaryolar (bkz. CLAUDE.md §0.7).
+## Testler her config'in üretilebilirliğini doğrular (_test_night_traffic2).
+const CASES := [
+	{"key": "case_herb", "cfg": {"n": 7, "evil_count": 2, "demon_count": 1, "anchor_count": 1,
+		"herbalist": true, "q_per_day": 3, "max_days": 5, "seed": 731001}},
+	{"key": "case_quiet", "cfg": {"n": 9, "evil_count": 2, "demon_count": 1, "anchor_count": 2,
+		"herbalist": true, "watcher": true, "wanderer": true, "q_per_day": 3, "max_days": 5, "seed": 731002}},
+	{"key": "case_trails", "cfg": {"n": 9, "evil_count": 3, "demon_count": 1, "anchor_count": 2,
+		"hound": true, "night_rule": Enums.NightRule.FARTHEST, "omen_type": Enums.OmenType.DISPERSED,
+		"q_per_day": 4, "max_days": 6, "seed": 731003}},
+	{"key": "case_prowl", "cfg": {"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2,
+		"herbalist": true, "watcher": true, "wanderer": true, "prowler": true,
+		"omen_type": Enums.OmenType.PARITY, "q_per_day": 4, "max_days": 6, "seed": 731004}},
+	{"key": "case_moody", "cfg": {"n": 10, "evil_count": 3, "demon_count": 1, "anchor_count": 2,
+		"alternating": true, "hound": true, "drunk_count": 1, "q_per_day": 4, "max_days": 6, "seed": 731005}},
+]
+
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_ensure_save_loaded()
+	GameState.case_config = {}  # haritaya dönüş vaka modunu kapatır
 	_pending_ascension = RunManager.max_ascension_unlocked
 	_build()
 	_refresh()
@@ -195,9 +216,9 @@ func _build() -> void:
 	_btn_row.add_theme_constant_override("separation", 18)
 	_btn_row.anchor_left = 0.5
 	_btn_row.anchor_right = 0.5
-	# 3 buton × 190 + 2 aralık × 18 = 606 → yarı 303 (sabit; resized-yarışı olmasın).
-	_btn_row.offset_left = -303
-	_btn_row.offset_right = 303
+	# 4 buton × 190 + 3 aralık × 18 = 814 → yarı 407 (sabit; resized-yarışı olmasın).
+	_btn_row.offset_left = -407
+	_btn_row.offset_right = 407
 	_btn_row.offset_top = 660
 	_btn_row.offset_bottom = 710
 	add_child(_btn_row)
@@ -206,7 +227,9 @@ func _build() -> void:
 	# ESC menüsünde; Karakterler Ayarlar ekranından açılır. Menü kalabalık olmasın.
 	_asc_btn = _secondary_btn(_btn_row, Loc.t("map_asc_btn") % 1, _cycle_ascension)
 	_daily_btn = _secondary_btn(_btn_row, Loc.t("btn_daily"), _start_daily)
+	_cases_btn = _secondary_btn(_btn_row, Loc.t("btn_cases"), _toggle_cases)
 	_settings_btn = _secondary_btn(_btn_row, Loc.t("menu_settings"), func(): Fader.change_scene("res://scenes/settings.tscn"))
+	_build_cases_layer()
 
 	# Tohumlu sefer: arkadaşının kopyaladığı TOHUM ile birebir aynı seferi oyna
 	# (skor yarışı — determinizm §13.6). Yalnız menüde (aktif sefer yokken) görünür.
@@ -316,6 +339,8 @@ func _refresh() -> void:
 	_map_layer.queue_redraw()
 	_asc_btn.visible = not active
 	_daily_btn.disabled = active
+	if _cases_btn != null:
+		_cases_btn.disabled = active
 	_records_panel.visible = not active
 	if _seed_row != null:
 		_seed_row.visible = not active
@@ -526,6 +551,81 @@ func _start_seeded() -> void:
 		return
 	RunManager.start_run(_pending_ascension, int(digits.substr(0, 12)))
 	_refresh()
+
+
+## V3.1 VAKALAR: seçim overlay'i — isimli, sabit seed'li senaryolar. Aynı vaka
+## herkes için aynı köydür (determinizm §13.6) — "şu vakayı çözebildin mi?" yarışı.
+func _build_cases_layer() -> void:
+	_cases_layer = Control.new()
+	_cases_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_cases_layer.visible = false
+	add_child(_cases_layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.01, 0.03, 0.86)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventMouseButton and ev.pressed:
+			_cases_layer.visible = false)
+	_cases_layer.add_child(dim)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.03, 0.05, 0.98)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(26)
+	sb.border_color = Color(0.72, 0.52, 0.28)
+	sb.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -330
+	panel.offset_right = 330
+	panel.offset_top = -290
+	panel.offset_bottom = 290
+	_cases_layer.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 12)
+	panel.add_child(vb)
+	var title := Label.new()
+	title.text = Loc.t("cases_title")
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color("f0b53c"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(title)
+	var sub := Label.new()
+	sub.text = Loc.t("cases_sub")
+	sub.add_theme_font_size_override("font_size", 13)
+	sub.add_theme_color_override("font_color", Color("d8cbb0"))
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(sub)
+	for case in CASES:
+		var key: String = case["key"]
+		var b := Button.new()
+		b.text = "%s\n%s" % [Loc.t(key + "_name"), Loc.t(key + "_desc")]
+		b.custom_minimum_size = Vector2(0, 62)
+		b.add_theme_font_size_override("font_size", 14)
+		ScreenFx.style_button(b, Color(0.09, 0.06, 0.09, 0.96), 14)
+		b.pressed.connect(_start_case.bind(case["cfg"]))
+		vb.add_child(b)
+	var close := Button.new()
+	close.text = Loc.t("cases_close")
+	close.custom_minimum_size = Vector2(0, 40)
+	ScreenFx.style_button(close, Color(0.12, 0.05, 0.05, 0.96), 14)
+	close.pressed.connect(func(): _cases_layer.visible = false)
+	vb.add_child(close)
+
+
+func _toggle_cases() -> void:
+	if _cases_layer != null:
+		_cases_layer.visible = not _cases_layer.visible
+		move_child(_cases_layer, get_child_count() - 1)
+
+
+func _start_case(cfg: Dictionary) -> void:
+	GameState.case_config = cfg.duplicate(true)
+	Fader.change_scene("res://scenes/village_board.tscn")
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -29,6 +29,22 @@ const PATHS := {
 	&"Hunter": "res://assets/art/portraits/chariot.png",
 	&"Saint": "res://assets/art/portraits/temperance.png",
 	&"Baker": "res://assets/art/portraits/temperance.png",
+	# Boş kalan roller — paylaşımlı placeholder (kullanıcı isteği: "boş karakter
+	# kalmasın"; final sanat M5'te hepsini değiştirecek).
+	&"Sheepdog": "res://assets/art/portraits/strength.png",
+	&"Shearer": "res://assets/art/portraits/wheel.png",
+	&"Drummer": "res://assets/art/portraits/magician.png",
+	&"Welldigger": "res://assets/art/portraits/hermit.png",
+	&"Beadcounter": "res://assets/art/portraits/priestess.png",
+	&"Skittish": "res://assets/art/portraits/star.png",
+	&"Tailor": "res://assets/art/portraits/justice.png",
+	&"Mirrorwright": "res://assets/art/portraits/lovers.png",
+	&"Trapper": "res://assets/art/portraits/hierophant.png",
+	&"Jinxed": "res://assets/art/portraits/moon.png",
+	&"Herbalist": "res://assets/art/portraits/temperance.png",
+	&"Watcher": "res://assets/art/portraits/priestess.png",
+	&"Wanderer": "res://assets/art/portraits/hermit.png",
+	&"Hound": "res://assets/art/portraits/chariot.png",
 	&"Minion": "res://assets/art/portraits/moon.png",
 	&"Demon": "res://assets/art/portraits/devil.png",
 }

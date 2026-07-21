@@ -38,6 +38,23 @@ const T := {
 	"btn_enter_flock": {"tr": "Sürüye Gir (Enter)", "en": "Join the Flock (Enter)"},
 	"btn_new_run": {"tr": "Yeni Sefer (Enter)", "en": "New Journey (Enter)"},
 	"btn_daily": {"tr": "Günün Seferi", "en": "Daily Journey"},
+	"btn_cases": {"tr": "Vakalar", "en": "Cases"},
+	"cases_title": {"tr": "VAKA DOSYALARI", "en": "CASE FILES"},
+	"cases_sub": {
+		"tr": "El yapımı, sabit tohumlu senaryolar — herkes aynı bulmacayı çözer. Y: yüzleştirme · H: hipotez.",
+		"en": "Handcrafted, fixed-seed scenarios — everyone solves the same puzzle. Y: confront · H: hypothesis.",
+	},
+	"cases_close": {"tr": "Kapat", "en": "Close"},
+	"case_herb_name": {"tr": "VAKA I — Otacının Yemini", "en": "CASE I — The Herbalist's Oath"},
+	"case_herb_desc": {"tr": "İlk şifa köyü: son sorgunu silaha çevir.", "en": "The first healing village: turn your last question into a weapon."},
+	"case_quiet_name": {"tr": "VAKA II — Sessiz Şafak", "en": "CASE II — The Quiet Dawn"},
+	"case_quiet_desc": {"tr": "Gözcü sayar, Seyyah gezer — kim gerçek?", "en": "The Watcher counts, the Wayfarer roams — who is real?"},
+	"case_trails_name": {"tr": "VAKA III — Karda İzler", "en": "CASE III — Trails in the Snow"},
+	"case_trails_desc": {"tr": "Sisli gece + Tazı burnu: yönlerden nirengi kur.", "en": "Foggy night + the Hound's nose: triangulate from directions."},
+	"case_prowl_name": {"tr": "VAKA IV — Sinsi", "en": "CASE IV — The Prowler"},
+	"case_prowl_desc": {"tr": "Sayımlarda fazladan bir gölge var. Kimin gölgesi?", "en": "There is one shadow too many in the counts. Whose?"},
+	"case_moody_name": {"tr": "VAKA V — Dönek Alfa", "en": "CASE V — The Fickle Alpha"},
+	"case_moody_desc": {"tr": "Av kuralı gece gece değişir — cesetleri ona göre oku.", "en": "The hunt rule flips night by night — read the corpses accordingly."},
 	"map_asc_btn": {"tr": "Çile: %d", "en": "Ordeal: %d"},
 	"map_run_done_title": {"tr": "SEFER TAMAMLANDI!", "en": "JOURNEY COMPLETE!"},
 	"map_run_done_sub": {
@@ -67,6 +84,7 @@ const T := {
 	"boss_hungry": {"tr": "AÇ ALFA", "en": "HUNGRY ALPHA"},
 	"boss_shadow": {"tr": "GÖLGE SÜRÜSÜ", "en": "SHADOW PACK"},
 	"boss_impatient": {"tr": "SABIRSIZ ALFA", "en": "RESTLESS ALPHA"},
+	"boss_moody": {"tr": "DÖNEK ALFA", "en": "FICKLE ALPHA"},
 	"miniboss_howl": {"tr": "İLK ULUMA", "en": "FIRST HOWL"},
 	"miniboss_shadow": {"tr": "PUSUDAKİ GÖLGE", "en": "LURKING SHADOW"},
 
@@ -105,6 +123,8 @@ const T := {
 	"mod_silent": {"tr": "SUSKUN SÜRÜ: herkes yalnız 1 ifade verir", "en": "SILENT FLOCK: everyone gives only 1 statement"},
 	"mod_blood_moon": {"tr": "KANLI AY: gecede 2 av · günde +1 sorgu", "en": "BLOOD MOON: 2 kills a night · +1 question a day"},
 	"mod_drought": {"tr": "KURAKLIK: yanlış avlama −7 can", "en": "DROUGHT: a wrong cull costs 7 health"},
+	"mod_prowler": {"tr": "SİNSİ KURT: en küçük no'lu canlı kurt her gece EN ÇOK sorgulanana sürtünür (iz bırakır, öldürmez)", "en": "PROWLER: the lowest-numbered living wolf brushes past the MOST-questioned each night (leaves traces, no kill)"},
+	"mod_moody": {"tr": "DÖNEK ALFA: TEK günler en yakını, ÇİFT günler en uzağı avlar", "en": "FICKLE ALPHA: hunts the nearest on ODD days, the farthest on EVEN days"},
 
 	# ---- Dükkân (shop) ----
 	"shop_title": {"tr": "DÜKKÂN", "en": "THE SHOP"},
