@@ -119,9 +119,9 @@ func _build_children() -> void:
 	_seat_label = _make_label(14, HORIZONTAL_ALIGNMENT_LEFT)
 	_seat_label.visible = false
 
-	_role_label = _make_label(13, HORIZONTAL_ALIGNMENT_CENTER)
-	_role_label.position = Vector2(6, H - 30)
-	_role_label.size = Vector2(W - 12, 25)
+	_role_label = _make_label(11, HORIZONTAL_ALIGNMENT_CENTER)
+	_role_label.position = Vector2(6, H - 24)
+	_role_label.size = Vector2(W - 12, 19)
 	_role_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 	_status_label = _make_label(36, HORIZONTAL_ALIGNMENT_CENTER)
@@ -473,13 +473,14 @@ func _draw() -> void:
 			Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0.55),
 		]))
 
-		# Alt isim bandı: tam genişlik koyu şerit + üstünde kategori renkli ayraç çizgisi.
+		# Alt isim bandı: tam genişlik koyu şerit + üstünde kategori renkli ayraç
+		# çizgisi. Köşesiz ve dar (kullanıcı isteği — keskin, ince şerit).
 		var band := StyleBoxFlat.new()
 		band.bg_color = Color(0.055, 0.03, 0.035, 0.96)
-		band.corner_radius_bottom_left = RADIUS - 3
-		band.corner_radius_bottom_right = RADIUS - 3
-		draw_style_box(band, Rect2(5, H - 30, W - 10, 25))
-		draw_line(Vector2(6, H - 30), Vector2(W - 6, H - 30), _band_color, 2.0)
+		draw_style_box(band, Rect2(5, H - 24, W - 10, 19))
+		# Ayraç çizgisi kenardan kenara — uçları sonra çizilen çerçevenin altında
+		# kalır, böylece jantın iç kenarına TAM değer (kullanıcı isteği).
+		draw_line(Vector2(0, H - 24), Vector2(W, H - 24), _band_color, 2.0)
 
 		# --- Çerçeve: dış ince koyu jant + kategori renkli ana çerçeve (temiz, sade) ---
 		var rim := StyleBoxFlat.new()
@@ -765,7 +766,36 @@ func _portrait_src(interior: Rect2) -> Rect2:
 
 
 func _draw_portrait(interior: Rect2) -> void:
-	draw_texture_rect_region(_portrait, interior, _portrait_src(interior))
+	# Köşeleri kart çerçevesiyle uyumlu YUVARLATILMIŞ poligonla çiz (kullanıcı
+	# isteği — kare köşeler yuvarlak jantın altından taşıyordu). draw_texture_rect
+	# kırpamadığından UV eşlemeli draw_colored_polygon kullanılır.
+	var src := _portrait_src(interior)
+	var pts := _rounded_rect_points(interior, RADIUS - 3)
+	var tw := float(_portrait.get_width())
+	var th := float(_portrait.get_height())
+	var uvs := PackedVector2Array()
+	for p in pts:
+		var t := (p - interior.position) / interior.size
+		uvs.append(Vector2(
+			(src.position.x + t.x * src.size.x) / tw,
+			(src.position.y + t.y * src.size.y) / th))
+	draw_colored_polygon(pts, Color.WHITE, uvs, _portrait)
+
+
+## interior'un köşeleri r yarıçapla yuvarlatılmış çokgen noktaları (saat yönü).
+func _rounded_rect_points(rect: Rect2, r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var centers := [
+		rect.position + Vector2(r, r),
+		Vector2(rect.end.x - r, rect.position.y + r),
+		rect.end - Vector2(r, r),
+		Vector2(rect.position.x + r, rect.end.y - r),
+	]
+	for ci in range(4):
+		var start := PI + ci * PI * 0.5  # sol-üstten başla, saat yönü
+		for i in range(7):
+			pts.append(centers[ci] + Vector2.from_angle(start + i * (PI * 0.5) / 6.0) * r)
+	return pts
 
 
 ## Minik elmas perçin (kart arkası köşe süsü): renkli elmas + fildişi parlak nokta.

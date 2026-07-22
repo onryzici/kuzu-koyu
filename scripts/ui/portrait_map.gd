@@ -6,19 +6,19 @@ extends RefCounted
 ## Bkz. CLAUDE.md §10 — placeholder sanat, telifsiz üretimle değişecek.
 
 const PATHS := {
-	&"Judge": "res://assets/art/portraits/justice.png",
-	&"Confessor": "res://assets/art/portraits/judgement.png",
-	&"Oracle": "res://assets/art/portraits/priestess.png",
-	&"Dreamer": "res://assets/art/portraits/star.png",
-	&"Knight": "res://assets/art/portraits/strength.png",
-	&"Sentry": "res://assets/art/portraits/chariot.png",
-	&"Scout": "res://assets/art/portraits/hermit.png",
-	&"Enlightened": "res://assets/art/portraits/hierophant.png",
-	&"Architect": "res://assets/art/portraits/wheel.png",
-	&"Lover": "res://assets/art/portraits/lovers.png",
-	&"Gossip": "res://assets/art/portraits/magician.png",
+	&"Judge": "res://assets/art/portraits/judge.png",  # final sanat (kullanıcı üretimi)
+	&"Confessor": "res://assets/art/portraits/confessor.png",  # final sanat (kullanıcı üretimi)
+	&"Oracle": "res://assets/art/portraits/oracle.png",  # final sanat (kullanıcı üretimi)
+	&"Dreamer": "res://assets/art/portraits/dreamer.png",  # final sanat (kullanıcı üretimi)
+	&"Knight": "res://assets/art/portraits/knight.png",  # final sanat (kullanıcı üretimi)
+	&"Sentry": "res://assets/art/portraits/sentry.png",  # final sanat (kullanıcı üretimi)
+	&"Scout": "res://assets/art/portraits/scout.png",  # final sanat (kullanıcı üretimi)
+	&"Enlightened": "res://assets/art/portraits/enlightened.png",  # final sanat (kullanıcı üretimi)
+	&"Architect": "res://assets/art/portraits/architect.png",  # final sanat (kullanıcı üretimi)
+	&"Lover": "res://assets/art/portraits/lover.png",  # final sanat (kullanıcı üretimi)
+	&"Gossip": "res://assets/art/portraits/gossip.png",  # final sanat (kullanıcı üretimi)
 	# Yeni köylüler (placeholder portreler — final sanat gelene dek paylaşımlı).
-	&"Healer": "res://assets/art/portraits/judgement.png",
+	&"Healer": "res://assets/art/portraits/healer.png",  # final sanat (kullanıcı üretimi)
 	&"Weaver": "res://assets/art/portraits/wheel.png",
 	&"Midwife": "res://assets/art/portraits/temperance.png",
 	&"Milkmaid": "res://assets/art/portraits/star.png",
@@ -45,7 +45,7 @@ const PATHS := {
 	&"Watcher": "res://assets/art/portraits/priestess.png",
 	&"Wanderer": "res://assets/art/portraits/hermit.png",
 	&"Hound": "res://assets/art/portraits/chariot.png",
-	&"Minion": "res://assets/art/portraits/moon.png",
+	&"Minion": "res://assets/art/portraits/minion.png",  # final sanat (kullanıcı üretimi)
 	&"Demon": "res://assets/art/portraits/devil.png",
 }
 

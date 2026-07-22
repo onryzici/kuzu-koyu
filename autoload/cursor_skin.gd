@@ -5,8 +5,8 @@ extends Node
 ## NOT: load() (preload değil) — asset import edilmemişken bile autoload derlensin
 ## (audio_manager.gd ile aynı tavuk-yumurta önlemi).
 
-const CURSOR_PATH := "res://assets/art/ui/cursor_paw.png"
-const HOTSPOT := Vector2(8, 5)
+const CURSOR_PATH := "res://assets/art/ui/cursor_lamb.png"
+const HOTSPOT := Vector2(7, 2)  # işaret tırnağının ucu (sol-üst)
 
 
 func _ready() -> void:

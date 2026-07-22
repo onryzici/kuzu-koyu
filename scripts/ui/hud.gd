@@ -38,6 +38,8 @@ var _overlay_label: Label
 var _overlay_evidence: Label   ## zafer overlay'inde kanıt zinciri özeti
 var _restart_btn: Button
 var _dmg_flash: ColorRect
+var _top_hint_label: Label     ## üst-orta küçük kalıcı ipucu satırı (İPUCU aynası)
+var _top_hints: Array[String] = []
 var _hp_display := 1.0        ## animasyonlu can oranı (çizim için)
 var _hp_animating := false
 var _globe_shake := Vector2.ZERO
@@ -200,6 +202,23 @@ func _build() -> void:
 	_setup_hover(_buyq_btn)
 
 	_layout_orbit()
+
+	# Kalıcı ipucu satırı — flash_banner'la geçen İPUCU'lar kaybolunca üstte
+	# küçük harflerle okunur kalsın (kullanıcı isteği). Köy başında temizlenir.
+	_top_hint_label = Label.new()
+	_top_hint_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_top_hint_label.offset_left = 420
+	_top_hint_label.offset_right = -420
+	_top_hint_label.offset_top = 10
+	_top_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_top_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_top_hint_label.add_theme_font_size_override("font_size", 12)
+	_top_hint_label.add_theme_color_override("font_color", Color(0.62, 0.80, 0.98, 0.72))
+	_top_hint_label.add_theme_color_override("font_outline_color", Color("140a06"))
+	_top_hint_label.add_theme_constant_override("outline_size", 5)
+	_top_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_top_hint_label.visible = false
+	add_child(_top_hint_label)
 
 	# Hasar flaşı (tam ekran kızıl, başta görünmez)
 	_dmg_flash = ColorRect.new()
@@ -369,6 +388,7 @@ func _banner_poly(x: float, y: float, w: float, h: float, c: float, flip: bool) 
 ## Tüm HUD panelleri EKRAN DIŞINDAN (drawer gibi) içeri kayar: sol menü soldan,
 ## kompozisyon/lejant/buton sağdan, can küresi soldan. Staggered.
 func play_intro() -> void:
+	clear_top_hints()  # yeni köy: önceki köyün kalıcı ipuçları taşınmasın
 	# Sol menü — soldan, tam ekran dışından (drawer). Her banner kendi off'uyla kayar.
 	for i in range(_menu_strips.size()):
 		var s: Dictionary = _menu_strips[i]
@@ -1012,6 +1032,23 @@ func _on_executed(_seat: int, was_evil: bool) -> void:
 func flash_banner(text: String, color: Color, center: bool = false) -> void:
 	if _banner != null:
 		_banner.show_message(text, color, center)
+
+
+## İPUCU'yu üst-orta küçük satıra da yaz — flash geçtikten sonra köy boyunca
+## tekrar okunabilsin. Aynı metin ikinci kez eklenmez; köy başında temizlenir.
+func add_top_hint(text: String) -> void:
+	if _top_hint_label == null or text in _top_hints:
+		return
+	_top_hints.append(text)
+	_top_hint_label.text = "\n".join(_top_hints)
+	_top_hint_label.visible = true
+
+
+func clear_top_hints() -> void:
+	_top_hints.clear()
+	if _top_hint_label != null:
+		_top_hint_label.text = ""
+		_top_hint_label.visible = false
 
 
 ## Açık duran duyuru bandını katla (mod iptallerinde yazı asılı kalmasın).

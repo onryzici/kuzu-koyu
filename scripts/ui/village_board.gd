@@ -10,6 +10,16 @@ const BG_TEXTURE := preload("res://assets/art/bg/ritual_ground.png")
 const GRASS_TEXTURE := preload("res://assets/art/bg/grass_tufts.png")
 const GRASS_SHADER := preload("res://assets/art/bg/grass_sway.gdshader")
 const FOG_SHADER := preload("res://assets/art/bg/ground_fog.gdshader")
+const DETECTIVE_TEXTURE := preload("res://assets/art/ui/detective.png")
+const LENS_EYE_TEXTURE := preload("res://assets/art/ui/lens_eye.png")
+
+# Merkez dedektif düzeni (doku uzayında normalize): mercek camının merkezi ve
+# yarıçapı — göz bebeği bu camın içinde gezer ("mercekle inceliyor" hissi).
+const EYE_RED := Color("e70500")            ## dalgalı zeminin ana kızılı
+const LENS_CENTER_UV := Vector2(0.391, 0.453)
+const LENS_R_UV := 0.153                    ## doku genişliği oranı
+const PUPIL_UV := Vector2(0.4234, 0.5258)   ## lens_eye.png'de bebeğin merkezi
+const PUPIL_R_UV := 0.0282                  ## bebeğin yarıçapı (genişlik oranı)
 
 # Bg'deki 5 ritüel mumunun alev konumları (bg uzayı, 3344x1882) — glow çizimi için.
 const CANDLE_SPOTS := [
@@ -97,6 +107,8 @@ var _confront_seat := -1       ## V3.1 yüzleştirme: konuşacak kart seçildi (
 var _last_worlds := -1         ## kanıt zinciri: son bilinen dünya sayısı (düşüş = kanıt)
 var _slayer_seat := -1         ## Kılıççı hedefleme modu (aktif yetenek)
 var _protect_mode := false     ## AĞIL: gece öncesi koruma seçim modu
+
+var _center_scale := 0.0       ## merkez (dedektif+zemin+kollar) giriş ölçeği: 0→1 pop
 
 # --- Atmosfer (yalnız görsel; oyun mantığına dokunmaz) ---
 # Süzülen kıvılcım/toz + merkezde nefes alan ritüel parıltısı + mum titremesi.
@@ -279,6 +291,7 @@ func _new_village() -> void:
 func _start_village_intro(conf: Dictionary) -> void:
 	_cinematic = true
 	_intro_done = false
+	_center_scale = 0.0  # merkez, intro bitince küçükten büyüyerek gelir
 	var v := GameState.village
 
 	_intro_layer = Control.new()
@@ -391,9 +404,13 @@ func _intro_label(parent: Node, text: String, fs: int, col: Color) -> Label:
 
 
 ## Giriş kartını kapat: kart kalkarken deste dağıtılır + HUD içeri kayar.
-## Bağlam ipucu: yalnız İLK karşılaşmada gösterilir (kalıcı — SaveManager).
+## Bağlam ipucu: flash yalnız İLK karşılaşmada (kalıcı — SaveManager); üstteki
+## küçük satır her tetiklenişte yazılır ki flash geçince de okunabilsin.
 func _maybe_hint(id: String, loc_key: String) -> void:
-	if _hud != null and SaveManager.first_hint(id):
+	if _hud == null:
+		return
+	_hud.add_top_hint(Loc.t(loc_key))
+	if SaveManager.first_hint(id):
 		_hud.flash_banner(Loc.t(loc_key), Color(0.62, 0.80, 0.98))
 
 
@@ -402,6 +419,7 @@ func _end_village_intro() -> void:
 		return
 	_intro_done = true
 	_cinematic = false
+	_center_scale = 1.0  # pop girişi denendi, beğenilmedi — merkez direkt görünür
 	AudioManager.play_deal()
 	_deal_cards()
 	_hud.play_intro()
@@ -1190,10 +1208,19 @@ func _draw() -> void:
 		var r: float = layer[0] * (0.92 + 0.08 * breathe)
 		draw_circle(center, r, Color(0.70, 0.10, 0.08, layer[1] * glow))
 
-	# --- Merkez nazar / kem göz: seçili/hover karta doğru bakar (§10.1) ---
-	_draw_eye_arms(center, breathe)     # gözden çıkan dalgalanan koyu kollar
-	_draw_eye_backing(center, breathe)  # gözün gömülü olduğu koyu gövde
-	_draw_nazar_eye(center, breathe)
+	# --- Merkez: dedektif koyun ---
+	# Siyah dalgalı kollar + dalgalı kızıl zemin (merkez EYE_RED, kenara yumuşak
+	# koyulaşma, en dış hat siyah) + dedektif; merceğinde hover'ı izleyen göz.
+	# Giriş: _center_scale 0→1 (köy introsu bitince); merkez etrafında ölçeklenir.
+	if _center_scale > 0.01:
+		if _center_scale < 0.999:
+			draw_set_transform(center * (1.0 - _center_scale), 0.0,
+				Vector2.ONE * _center_scale)
+		_draw_eye_arms(center, breathe)
+		_draw_eye_backing(center, breathe)
+		_draw_detective(center, breathe)
+		if _center_scale < 0.999:
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# (Yön okları, çelişki bağları ve hipotez halkaları _draw_fx_layer'da —
 	# kartların ve bilgi kartının ÜSTÜNDEKİ katman.)
@@ -1375,57 +1402,51 @@ func _draw_distance_trail(ci: CanvasItem, center: Vector2, radius: float, a0: fl
 		]), Color(CLUE_AMBER.r, CLUE_AMBER.g, CLUE_AMBER.b, alpha))
 
 
-## Merkez nazar / kem göz — SADE: kırmızı gradyan gövde + koyu bebek. Parlama/
-## catchlight YOK. Arkasında düz tek siyah border (_draw_eye_backing).
-func _draw_nazar_eye(center: Vector2, breathe: float) -> void:
-	# Referans: büyük KIRMIZI göz + İRİ koyu bebek (kenara kayınca kızıl HİLAL
-	# kalır) + yumuşak kızıl kenar.
-	var tw := _time * 1.1
-	var rx := 74.0 * (0.98 + 0.03 * breathe)
-	var ry := 88.0 * (0.98 + 0.03 * breathe)
+## Merkez dedektif koyun: dalgalı kızıl zeminin üstünde durur; merceğin camında
+## hover kartını takip eden göz bebeği çizilir ("mercekle inceliyor" hissi).
+func _draw_detective(center: Vector2, breathe: float) -> void:
+	var tex_w := float(DETECTIVE_TEXTURE.get_width())
+	var tex_h := float(DETECTIVE_TEXTURE.get_height())
+	var w := 214.0 * (0.99 + 0.02 * breathe)  # zeminle aynı nefes
+	var h := w * tex_h / tex_w
+	# Hafif doğal salınım: iki uyumsuz frekansta küçük sürüklenme (canlı ama sakin).
+	var sway := Vector2(2.2 * sin(_time * 0.62), 2.8 * sin(_time * 0.97 + 1.3))
+	var tl := center - Vector2(w * 0.5, h * 0.5) + sway
+	# KESKİN gölge (kullanıcı isteği: gauss yok): siluetin ofsetli siyah kopyası.
+	# Siyah modülasyon RGB'yi sıfırlar, alfa kalır → net kenarlı gölge.
+	draw_texture_rect(DETECTIVE_TEXTURE, Rect2(tl + Vector2(8, 10), Vector2(w, h)),
+		false, Color(0, 0, 0, 0.45))
+	draw_texture_rect(DETECTIVE_TEXTURE, Rect2(tl, Vector2(w, h)), false)
 
-	# Gözden dışa yumuşak kızıl kenar (glow) — koyu çevreye sızar (birkaç faint katman).
-	for i in range(6):
-		var f := float(i) / 6.0
-		draw_colored_polygon(_eye_outline(center, rx * (1.0 + f * 0.34), ry * (1.0 + f * 0.32), tw),
-			Color(0.72, 0.06, 0.04, 0.11 * (1.0 - f)))
-
-	# Düz kırmızı göz (ince koyu kenar + ana kırmızı — 2 ton, banding yok).
-	draw_colored_polygon(_eye_outline(center, rx, ry, tw), Color(0.46, 0.03, 0.02, 1.0))
-	draw_colored_polygon(_eye_outline(center, rx * 0.9, ry * 0.9, tw), Color(0.86, 0.11, 0.06, 1.0))
-
-	# İRİ koyu bebek — bakış yönüne kaydıkça kırmızı hilal ortaya çıkar (referans).
-	var pc := center + Vector2(_eye_look.x * rx * 0.34, _eye_look.y * ry * 0.30)
-	draw_colored_polygon(_eye_outline(pc, rx * 0.58, ry * 0.62, tw), Color(0.05, 0.004, 0.01, 1.0))
-	# Bebek çekirdeği: daha da koyu iç (derinlik hissi).
-	var cc := pc + Vector2(_eye_look.x * 6.0, _eye_look.y * 5.0)
-	draw_colored_polygon(_eye_outline(cc, rx * 0.34, ry * 0.38, tw), Color(0.0, 0.0, 0.0, 1.0))
-
-
-## Gözün organik konturu: dikey yumurta (elips) + zamanla dalgalanan canlı kenar.
-## Aynı wobble tüm ölçeklerde kullanıldığı için katmanlar temiz yuvalanır.
-func _eye_outline(c: Vector2, rx: float, ry: float, tw: float) -> PackedVector2Array:
-	var seg := 46
+	# Göz bebeği: mercek camının içinde _eye_look yönüne HAFİFÇE kayar. lens_eye.png'den
+	# bebek bölgesi dairesel UV poligonla örneklenir (beyaz zemin daire dışında kalır).
+	var lens_c := tl + Vector2(LENS_CENTER_UV.x * w, LENS_CENTER_UV.y * h)
+	var lens_r := LENS_R_UV * w
+	var pc := lens_c + _eye_look * lens_r * 0.16
+	var pr := lens_r * 0.30
+	var ew := float(LENS_EYE_TEXTURE.get_width())
+	var eh := float(LENS_EYE_TEXTURE.get_height())
+	var uv_c := PUPIL_UV
+	var uv_r := PUPIL_R_UV * ew  # px cinsinden yarıçap
 	var pts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var seg := 28
 	for i in range(seg):
 		var a := TAU * float(i) / float(seg)
-		var wob := 1.0 + 0.045 * sin(a * 3.0 + tw) + 0.028 * sin(a * 5.0 - tw * 0.6)
-		# hafif yumurta: alt yarı biraz daha dolgun
-		var yb := sin(a)
-		var yr := ry * (1.0 + 0.06 * yb)
-		pts.append(c + Vector2(cos(a) * rx * wob, yb * yr * wob))
-	return pts
+		var dirv := Vector2(cos(a), sin(a))
+		pts.append(pc + dirv * pr)
+		uvs.append(Vector2(uv_c.x + dirv.x * uv_r / ew, uv_c.y + dirv.y * uv_r / eh))
+	draw_colored_polygon(pts, Color.WHITE, uvs, LENS_EYE_TEXTURE)
 
 
-## Gözden çıkan DALGALANAN koyu kollar (yaratık hissi). Her kol incelen, sinüsle
-## kıvrılan koyu bir şerit; zamanla sallanır. Gözün arkasında çizilir.
-## Kollar ARA ARA kart çemberine kadar uzanır — uç bir karta değince kart
-## "yoklanır" (bkz. _probe_cards): göz sürüyü tek tek kontrol ediyor hissi.
+## Merkezden çıkan DALGALANAN SİYAH kollar (dış hatla aynı renk — kullanıcı
+## isteği). Her kol incelen, sinüsle kıvrılan şerit; ara ara kart çemberine
+## uzanır — uç bir karta değince kart "yoklanır" (bkz. _probe_cards).
 func _draw_eye_arms(center: Vector2, breathe: float) -> void:
 	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.48
 	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.36
 	var arms := 9
-	var col := Color(0.03, 0.006, 0.012, 1.0)
+	var col := Color(0.03, 0.008, 0.01, 1.0)  # en dış hatla aynı siyah
 	# Kart çemberi yarıçapı (_relayout ile aynı formül) — kolların max erimi.
 	var ring := minf(size.x, size.y) * (0.305 + maxf(0.0, _cards.size() - 7) * 0.008)
 	_arm_tips.clear()
@@ -1434,14 +1455,14 @@ func _draw_eye_arms(center: Vector2, breathe: float) -> void:
 		var ang := base_a + 0.20 * sin(_time * 1.2 + k * 0.8)
 		var root := center + Vector2(cos(ang), sin(ang)) * Vector2(rx * 0.72, ry * 0.72)
 		# Yavaş, kol başına faz kaymalı nefes: tepe noktasında uç kartlara değer,
-		# çukurda gözün dibine çekilir ("ara ara" dokunma motorun kendisinden).
+		# çukurda merkeze çekilir ("ara ara" dokunma motorun kendisinden).
 		var stretch := 0.34 + 0.40 * sin(_time * 0.55 + float(k) * 2.3)
 		var length := maxf(30.0, ring * (0.42 + stretch) - root.distance_to(center))
 		var tip := _draw_wavy_arm(root, ang, length, 16.0 + 4.0 * sin(_time + k), col, k)
 		_arm_tips.append(tip)
 
 
-## Kökten uca incelen, boyunca sinüsle kıvrılan koyu şerit. Uç noktasını döndürür.
+## Kökten uca incelen, boyunca sinüsle kıvrılan şerit. Uç noktasını döndürür.
 func _draw_wavy_arm(root: Vector2, angle: float, length: float, base_w: float, col: Color, idx: int) -> Vector2:
 	var seg := 9
 	var dir := Vector2(cos(angle), sin(angle))
@@ -1465,21 +1486,29 @@ func _draw_wavy_arm(root: Vector2, angle: float, length: float, base_w: float, c
 	return root + dir * length + perp * tip_wob
 
 
-## Kırmızı gözün gömülü olduğu KOYU YARATIK GÖVDESİ: loblu, yavaş dalgalanan
-## organik kütle + kenarında için için yanan kızıl çatlaklar (referans: dev tek
-## gözlü gölge-yaratık).
+## Dedektifin arkasındaki DALGALI KIZIL ZEMİN: loblu, yavaş dalgalanan organik
+## kütle. Radyal geçiş: merkez EYE_RED, kenara doğru kademeli koyulaşır
+## (kullanıcı isteği). Aynı wobble fazı kullanıldığı için katmanlar temiz yuvalanır.
 func _draw_eye_backing(center: Vector2, breathe: float) -> void:
-	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.48
-	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.36
-	# Dış yumuşak gölge (gövde zemine sızar).
-	draw_colored_polygon(_blob_outline(center, rx * 1.18, ry * 1.15, _time * 0.7, 2.0),
+	var rx := 74.0 * (0.98 + 0.03 * breathe) * 1.80
+	var ry := 88.0 * (0.98 + 0.03 * breathe) * 1.62
+	# Dış yumuşak gölge (zemine sızar). Siyah gövde katmanı KALDIRILDI (kullanıcı
+	# isteği: siyah dalga zaten arkadaki kollarda var — kenar koyu kızılda bitsin).
+	draw_colored_polygon(_blob_outline(center, rx * 1.16, ry * 1.13, _time * 0.7, 2.0),
 		Color(0.02, 0.005, 0.01, 0.55))
-	# Ana gövde.
-	draw_colored_polygon(_blob_outline(center, rx, ry, _time * 0.7, 0.0),
-		Color(0.045, 0.012, 0.018, 1.0))
+	# İç içe kızıl katmanlar: dışta koyu, merkeze doğru EYE_RED'e açılır.
+	# Çok katman + küçük adım + ease = bantsız, doğal geçiş (kullanıcı isteği).
+	var layers := 16
+	for i in range(layers):
+		var f := float(i) / float(layers - 1)   # 0 = dış, 1 = merkez
+		var s := lerpf(1.0, 0.26, f)
+		var eased := f * f * (3.0 - 2.0 * f)    # smoothstep: kenarlarda yumuşak iniş
+		draw_colored_polygon(
+			_blob_outline(center, rx * s, ry * s, _time * 0.7, 0.0),
+			EYE_RED.darkened(0.42 * (1.0 - eased)))
 
 
-## Loblu organik gövde konturu: _eye_outline'dan daha güçlü, çok frekanslı dalga.
+## Loblu organik gövde konturu: çok frekanslı, yavaş dalga.
 func _blob_outline(c: Vector2, rx: float, ry: float, tw: float, seed_off: float) -> PackedVector2Array:
 	var seg := 56
 	var pts := PackedVector2Array()
@@ -1491,19 +1520,6 @@ func _blob_outline(c: Vector2, rx: float, ry: float, tw: float, seed_off: float)
 			+ 0.04 * sin(a * 2.0 + tw * 0.5)
 		pts.append(c + Vector2(cos(a) * rx * wob, sin(a) * ry * wob))
 	return pts
-
-
-## Göz gradyan rengi: t=0 kenar (koyu kan) -> t=1 merkez (sıcak kor). eg parlaklık.
-func _eye_grad(t: float, eg: float) -> Color:
-	var edge := Color(0.24, 0.02, 0.02)
-	var mid := Color(0.82, 0.12, 0.06)
-	var core := Color(1.0, 0.58, 0.26)
-	var c: Color
-	if t < 0.58:
-		c = edge.lerp(mid, t / 0.58)
-	else:
-		c = mid.lerp(core, (t - 0.58) / 0.42)
-	return Color(c.r * eg, c.g * eg, c.b * eg, 1.0)
 
 
 func _set_night_alpha(v: float) -> void:
